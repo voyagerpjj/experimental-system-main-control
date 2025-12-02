@@ -26,13 +26,14 @@
 "stepmotorcontroller\system_stm32f1xx.o"
 "stepmotorcontroller\communication.o"
 "stepmotorcontroller\crc.o"
-"stepmotorcontroller\ifr_usart.o"
 "stepmotorcontroller\motor.o"
 "stepmotorcontroller\test.o"
 "stepmotorcontroller\communicat.o"
 "stepmotorcontroller\control.o"
 "stepmotorcontroller\motor_control.o"
-"stepmotorcontroller\timer_1.o"
+"stepmotorcontroller\ifr_tim.o"
+"stepmotorcontroller\ifr_usart.o"
+"stepmotorcontroller\ifr_crc.o"
 --strict --scatter "StepMotorController\StepMotorController.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers

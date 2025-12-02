@@ -7,7 +7,7 @@
 #include "string.h"
 #include "iwdg.h"
 #include "communication.h"
-#include "timer.h"
+#include "ifr_tim.h"
 #include <stdlib.h>
 #define SPEED_MAX_PLUSE 3500
 typedef enum

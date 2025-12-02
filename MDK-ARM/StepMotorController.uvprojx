@@ -537,11 +537,6 @@
               <FilePath>..\Bsp\crc.c</FilePath>
             </File>
             <File>
-              <FileName>ifr_usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bsp\ifr_usart.c</FilePath>
-            </File>
-            <File>
               <FileName>motor.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Bsp\motor.c</FilePath>
@@ -577,9 +572,19 @@
           <GroupName>IFR</GroupName>
           <Files>
             <File>
-              <FileName>timer.c</FileName>
+              <FileName>ifr_tim.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\IFR\timer.c</FilePath>
+              <FilePath>..\IFR\ifr_tim.c</FilePath>
+            </File>
+            <File>
+              <FileName>ifr_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\IFR\ifr_usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>ifr_crc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\IFR\ifr_crc.c</FilePath>
             </File>
           </Files>
         </Group>

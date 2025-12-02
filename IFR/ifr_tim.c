@@ -1,4 +1,4 @@
-#include "timer.h"
+#include "ifr_tim.h"
 timer_typedef* TIM_Pointer[15] = {0};//定时器类指针，用于定向查找任务函数
 
 #if USE_HAL_TIM_REGISTER_CALLBACKS //如果底下是虚的说明你没使能Register Callback TIM
