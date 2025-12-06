@@ -52,13 +52,12 @@ void usart_ttl_analysisFunc(uint8_t *pData, uint8_t len)
 						
 						switch (i) 
 						{
-							case 0: rx_ttl_message.motor_control_data.motor_tar1 = speed; break;
-							case 1: rx_ttl_message.motor_control_data.motor_tar2 = speed; break;
-							case 2: rx_ttl_message.motor_control_data.motor_tar3 = speed; break;
-							case 3: rx_ttl_message.motor_control_data.motor_tar4 = speed; break;
+							case 0: rx_ttl_message.motor_control_data.motor_tar[0] = speed; break;
+							case 1: rx_ttl_message.motor_control_data.motor_tar[1] = speed; break;
+							case 2: rx_ttl_message.motor_control_data.motor_tar[2] = speed; break;
+							case 3: rx_ttl_message.motor_control_data.motor_tar[3] = speed; break;
 						}
 					}
-					rx_ttl_message.motor_control_data.answer = NEED_ANSWER;
 				}
 				else if (pData[index + 2] == 0x0F)	// 若为配置模式指令
 				{
@@ -209,9 +208,9 @@ rx_ttl_message_typedef get_ttl_rx_message()
 {
 	return rx_ttl_message;
 }
-liquid_level_transmitter_typedef* get_liquid_level_transmitter()
+liquid_level_transmitter_typedef get_liquid_level_transmitter(int index)
 {
-	return liquid_level_transmitter;
+	return liquid_level_transmitter[index];
 }
 liquid_flow_collection_typedef get_liquid_flow_collection()
 {

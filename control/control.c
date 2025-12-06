@@ -22,12 +22,6 @@ void control_input(void)
 void control_runing(void)
 {
 	communicat_runing();
-	// 电机控制 - 2
-//	for (int i = 0; i < MOTOR_COUNT; i++)
-//	{
-			motor_control(0, target_motor_speed.target_speed[0]);
-			motor_control(1, target_motor_speed.target_speed[1]);
-//	}
 	if (system_state.mode == MOTOR_CONTROL)
 	{
 		switch (system_state.motor_control_mode)
@@ -40,15 +34,14 @@ void control_runing(void)
 				if (usart_485_transmit_all() == HAL_OK)
 					system_state.motor_control_mode = TRANSMIT_DATA;
 				break;
-			case TRANSMIT_DATA:
+			case TRANSMIT_DATA:	// 向上位机发送当前流量传感器和液位变送器数据
 				usart_ttl_transmit();
 				system_state.motor_control_mode = SET_MOTOR_SPEED;
 			case SET_MOTOR_SPEED:	// 电机控制
-				//	for (int i = 0; i < MOTOR_COUNT; i++)
-				//	{
-							motor_control(0, target_motor_speed.target_speed[0]);
-							motor_control(1, target_motor_speed.target_speed[1]);
-				//	}
+				for (int i = 0; i < MOTOR_COUNT; i++)
+				{
+					motor_control(i, target_motor_speed.target_speed[i]);
+				}
 				break;
 			default:
 				break;
@@ -61,13 +54,31 @@ void control_runing(void)
 void communicat_runing()
 {
 	rx_ttl_message_typedef rx_ttl_message_temp = get_ttl_rx_message();
-	if (rx_ttl_message_temp.rx_message_state == MOTOR_CONTROL_MSG && rx_ttl_message_temp.motor_control_data.answer == NEED_ANSWER)
+	
+	if (rx_ttl_message_temp.rx_message_state == MOTOR_CONTROL_MSG)
 	{
 		system_state.mode = MOTOR_CONTROL;
 		system_state.motor_control_mode = INIT;
+		for (int i = 0; i < 4; i++)
+		{
+			target_motor_speed.target_speed[i] = rx_ttl_message_temp.motor_control_data.motor_tar[i];	// 更新电机目标速度
+		}
 	}
 	if (rx_ttl_message_temp.rx_message_state == CONFIGURATION_MSG)
+	{
 		system_state.mode = STOP;
+		if (rx_ttl_message_temp.configuration_data.rx_modbus_message == DEVICE_POWER_MSG)
+		{
+			for (int i = 0; i < 4; i++)
+			{
+				liquid_level_transmitter_typedef liquid_level_transmitter_temp = get_liquid_level_transmitter(i);
+				if (liquid_level_transmitter_temp.liquid_level_transmitter_power == NO)
+					HAL_GPIO_WritePin(TRAN1_EN_GPIO_Port, TRAN1_EN_Pin, GPIO_PIN_RESET);
+				else 
+					HAL_GPIO_WritePin(TRAN1_EN_GPIO_Port, TRAN1_EN_Pin, GPIO_PIN_SET);
+			}
+		}
+	}
 }
 
 

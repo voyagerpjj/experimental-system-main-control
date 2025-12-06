@@ -35,8 +35,8 @@ typedef enum
 // }tx_messageType_enum;
 typedef enum
 {
-	NO = 0,	// 不需要读取 或 不需要上电
-	YES ,		// 需要读取 或 需要上电
+	YES = 0,	// 需要读取 或 需要上电
+	NO,				// 不需要读取 或 不需要上电
 } read_data_enum;
 
 typedef enum
@@ -46,11 +46,7 @@ typedef enum
 } answer_enum;
 typedef __packed struct
 {
-	uint16_t motor_tar1;
-	uint16_t motor_tar2;
-	uint16_t motor_tar3;
-	uint16_t motor_tar4;
-	answer_enum answer;															// 是否需要回复消息 	
+	uint16_t motor_tar[4];	
 } motor_control_data_typedef;
 
 typedef __packed struct
@@ -110,7 +106,7 @@ typedef struct
 }	equipment_typedef;
 
 rx_ttl_message_typedef get_ttl_rx_message(void);
-liquid_level_transmitter_typedef* get_liquid_level_transmitter(void);
+liquid_level_transmitter_typedef get_liquid_level_transmitter(int index);
 liquid_flow_collection_typedef get_liquid_flow_collection(void);
 void usart_485_transmit_init(void);
 HAL_StatusTypeDef usart_485_transmit_all(void);
