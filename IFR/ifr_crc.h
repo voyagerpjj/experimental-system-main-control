@@ -24,6 +24,6 @@ extern "C" {
 #endif
 #include "main.h"
 
-uint16_t CalcCRC_Modbus(uint8_t MsgToCRC[], int MsgLenToCRC);
+uint16_t CalcCRC16_Modbus(uint8_t MsgToCRC[], int MsgLenToCRC);
 
 #endif

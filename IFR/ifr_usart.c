@@ -1,16 +1,16 @@
 #include "ifr_usart.h"
 
 // 静态函数声明
-static void Start_DMA_Receive(IFR_USART_ClassDef *ifr_usart);
-static void Uart_DoubleBuffer_Recevice(IFR_USART_ClassDef *ifr_usart, uint16_t len);
+static void Start_DMA_Receive(ifr_usart_typedef *ifr_usart);
+static void Uart_DoubleBuffer_Recevice(ifr_usart_typedef *ifr_usart, uint16_t len);
 static uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart);
-static void IFR_Usart_Restart(IFR_USART_ClassDef *ifr_usart);
+static void IFR_Usart_Restart(ifr_usart_typedef *ifr_usart);
 
 // 回调函数声明
 void IFR_UART_Rx_Callback(UART_HandleTypeDef *huart, uint16_t len);
 
 // 串口对象指针数组，用于根据串口句柄查找对应的对象
-IFR_USART_ClassDef* USART_Pointers[11] = {NULL};
+ifr_usart_typedef* USART_Pointers[11] = {NULL};
 
 /**
   * @brief   串口初始化
@@ -19,7 +19,7 @@ IFR_USART_ClassDef* USART_Pointers[11] = {NULL};
   * @param   UART_Analysis_Function: 数据解析函数指针
   * @retval  void
   */
-void IFR_USART_Init(IFR_USART_ClassDef *ifr_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)(uint8_t *pData, uint8_t len)) 
+void IFR_USART_Init(ifr_usart_typedef *ifr_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)(uint8_t *pData, uint8_t len)) 
 {
     ifr_usart->_huart = huart;
     uint8_t uart_id = IFR_Uart_ID_Get(huart);
@@ -41,7 +41,7 @@ void IFR_USART_Init(IFR_USART_ClassDef *ifr_usart, UART_HandleTypeDef *huart, vo
   * @param   len: 接收数据长度
   * @retval  void
   */
-static void Uart_DoubleBuffer_Recevice(IFR_USART_ClassDef *ifr_usart, uint16_t len) 
+static void Uart_DoubleBuffer_Recevice(ifr_usart_typedef *ifr_usart, uint16_t len) 
 {
     // 切换缓冲区并保存数据长度
     ifr_usart->Buffer_Num = !ifr_usart->Buffer_Num;
@@ -63,7 +63,7 @@ static void Uart_DoubleBuffer_Recevice(IFR_USART_ClassDef *ifr_usart, uint16_t l
   * @param   ifr_usart: 串口对象指针
   * @retval  void
   */
-static void Start_DMA_Receive(IFR_USART_ClassDef *ifr_usart) 
+static void Start_DMA_Receive(ifr_usart_typedef *ifr_usart) 
 { 
     // 启动DMA空闲接收
     ifr_usart->UsartRxState = HAL_UARTEx_ReceiveToIdle_DMA(ifr_usart->_huart, ifr_usart->rx_dma_buffer_[ifr_usart->Buffer_Num], USART_RX_RING_BUFFER_SIZE);
@@ -104,7 +104,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   * @param   ifr_usart: 串口对象指针
   * @retval  void
   */
-static void IFR_Usart_Restart(IFR_USART_ClassDef *ifr_usart) 
+static void IFR_Usart_Restart(ifr_usart_typedef *ifr_usart) 
 {
     if (ifr_usart->_huart == NULL) return;
     
@@ -126,7 +126,7 @@ static void IFR_Usart_Restart(IFR_USART_ClassDef *ifr_usart)
   * @param   huart: 串口句柄
   * @retval  串口ID (0-10，0表示无效串口)
   */
-static uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart) 
+uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart) 
 {
     if (huart->Instance == USART1)           return 1;
     else if (huart->Instance == USART2)      return 2;

@@ -28,7 +28,7 @@ static uint8_t achCRCLo[]={0, 192, 193, 1, 195, 3, 2, 194, 198, 6, 7, 199, 5, 19
 	
 // Modbus协议CRC16位校验，
 // 参数1：数据数组，参数2：数据长度
-uint16_t CalcCRC_Modbus(uint8_t MsgToCRC[], int MsgLenToCRC)
+uint16_t CalcCRC16_Modbus(uint8_t MsgToCRC[], int MsgLenToCRC)
 {
 	uint8_t crchi=0xff;
 	uint8_t crclo=0xff;

@@ -1,5 +1,5 @@
 #include "ifr_tim.h"
-timer_typedef* TIM_Pointer[15] = {0};//定时器类指针，用于定向查找任务函数
+ifr_tim_typedef* TIM_Pointer[15] = {0};//定时器类指针，用于定向查找任务函数
 
 #if USE_HAL_TIM_REGISTER_CALLBACKS //如果底下是虚的说明你没使能Register Callback TIM
 
@@ -11,11 +11,11 @@ void TIM_Overflow_Callback(TIM_HandleTypeDef *htim)
 }
 
 // 定时器初始化(启动) 注册对应的定时器回调函数，并启动定时器
-void timer_start(timer_typedef * timer_t, TIM_HandleTypeDef* htim, void (*callback)(void))
+void ifr_tim_start(ifr_tim_typedef * ifr_tim_t, TIM_HandleTypeDef* htim, void (*callback)(void))
 {
-    timer_t->timer = htim;
-    timer_t->callback = callback;   
-    TIM_Pointer[IFR_TIM_ID_GET(htim)] = timer_t;    //注册定时器类指针，用于定向查找任务函数
+    ifr_tim_t->timer = htim;
+    ifr_tim_t->callback = callback;   
+    TIM_Pointer[IFR_TIM_ID_GET(htim)] = ifr_tim_t;    //注册定时器类指针，用于定向查找任务函数
     
     HAL_TIM_RegisterCallback(htim, HAL_TIM_PERIOD_ELAPSED_CB_ID, TIM_Overflow_Callback);    //注册定时器溢出回调函数
     HAL_TIM_Base_Start_IT(htim);    //启动定时器
@@ -26,9 +26,9 @@ void timer_start(timer_typedef * timer_t, TIM_HandleTypeDef* htim, void (*callba
   * @概述	调用任务函数。一般不对外使用。
   * @返回值 void
   */
-static void TaskFunction_Call(timer_typedef * timer_t)
+static void TaskFunction_Call(ifr_tim_typedef * ifr_tim_t)
 {
-	if(timer_t->callback!= NULL) (*timer_t->callback)();
+	if(ifr_tim_t->callback!= NULL) (*ifr_tim_t->callback)();
 }
 
 //static函数外部无法调用，禁止改写!!!

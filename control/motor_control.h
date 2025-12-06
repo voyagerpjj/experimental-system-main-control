@@ -9,178 +9,174 @@
 #include "communication.h"
 #include "ifr_tim.h"
 #include <stdlib.h>
+
 #define SPEED_MAX_PLUSE 3500
+
+// 电机索引枚举
 typedef enum
 {
     MOTOR_1 = 0,
     MOTOR_2 = 1,
     MOTOR_3 = 2,
     MOTOR_4 = 3,
-	MOTOR_COUNT,
-} motorindex_enum;	//	������
+    MOTOR_COUNT,
+} motorindex_enum;
 
+// 电机状态枚举
 typedef enum
 {
-	MOTOR_IDLE = 0,         /* ���ʧ�ܣ����У�״̬*/
-	MOTOR_AVESPEED,    		/* �������״̬ */
-	MOTOR_ACTIVE,           /* ��������˶�״̬ */
+    MOTOR_IDLE = 0,         // 电机空闲（停止）状态
+    MOTOR_AVESPEED,         // 电机匀速状态
+    MOTOR_ACTIVE,           // 电机加减速运动状态
 } motor_state_typedef;
 
+// 电机速度状态枚举
 typedef enum
 {
-	MOTOR_STOP = 0,				// ���ֹͣ״̬	
-	MOTOR_LOW_SPEED_STATE,		// ������ٽ׶�
-	MOTOR_HIGH_SPEED_STATE,		// ������ٽ׶�
-	MOTOR_HIGH_MINOR_ADJUST,   	// ������ٽ׶�΢��
+    MOTOR_STOP = 0,             // 电机停止状态
+    MOTOR_LOW_SPEED_STATE,      // 电机低速阶段
+    MOTOR_HIGH_SPEED_STATE,     // 电机高速阶段
+    MOTOR_HIGH_MINOR_ADJUST,    // 电机高速微调阶段
 } motor_speed_state_typedef;
 
-typedef union{
-	uint8_t data[2];
-	uint16_t target_speed;
+// 目标速度联合体
+typedef union {
+    uint8_t data[2];
+    uint16_t target_speed;
 } motor_target_speed;
 
+// 速度计算结构体
 typedef struct 
 {
-	uint16_t psc;             				/*��ʱ��Ԥ��Ƶֵ*/
-  	uint16_t accel_pulse;                	/*���ٶεĲ��� ��λpulse*/
- 	uint16_t toggle_pulse[SPEED_MAX_PLUSE];  /*�������ÿ��CCR�Ĵ���ֵ*/
+    uint16_t psc;                         // 定时器预分频值
+    uint16_t accel_pulse;                 // 加速段的脉冲数（单位：pulse）
+    uint16_t toggle_pulse[SPEED_MAX_PLUSE]; // 存储每个CCR的更新值
 } speed_calc_typedef;
 
+// 电机参数结构体
 typedef struct 
 {
-	TIM_HandleTypeDef* timer;	// ��ʱ�����
-	uint32_t channel;
-	GPIO_TypeDef* enable_port;
-	uint32_t enable_pin;
-} motor_params_typedef;       /*�����ʼ�������ṹ��*/
+    TIM_HandleTypeDef* timer;  // 定时器句柄
+    uint32_t channel;          // 定时器通道
+    GPIO_TypeDef* enable_port; // 使能引脚端口
+    uint32_t enable_pin;       // 使能引脚
+} motor_params_typedef;
 
 #define ACCEL 1.0f
 #define DECEL -1.0f
 
-// DMA���
+// DMA模式枚举
 typedef enum {
-    DMA_MODE_NORMAL = 0,	// DMA����ģʽ��������ɺ�ֹͣ
-    DMA_MODE_CIRCULAR = 1	// DMAѭ��ģʽ��������ɺ��ظ���������
+    DMA_MODE_NORMAL = 0,   // DMA正常模式，完成后停止
+    DMA_MODE_CIRCULAR = 1  // DMA循环模式，完成后重新开始
 } dma_mode_enum;
 
+// DMA状态枚举
 typedef enum 
 {
-    DMA_STATE_READY = 0,	// DMA����״̬
-    DMA_STATE_BUSY,			// DMAæ״̬
-    DMA_STATE_COMPLETE		// DMA�������
+    DMA_STATE_READY = 0,   // DMA就绪状态
+    DMA_STATE_BUSY,        // DMA忙状态
+    DMA_STATE_COMPLETE     // DMA完成状态
 } dma_state_enum;
 
+// DMA参数结构体
 typedef struct
 {
-	dma_mode_enum dma_mode;
-	dma_state_enum dma_state;
+    dma_mode_enum dma_mode;
+    dma_state_enum dma_state;
 } dma_prames;
 
+// 电机结构体
 typedef struct
 {
-	motorindex_enum motorindex;						// ������
-	motor_state_typedef state;						// ���״̬
-	motor_state_typedef last_state;						// ���״̬
-	motor_speed_state_typedef motor_speed_state;	// ����ٶ�״̬
-	motor_speed_state_typedef last_motor_speed_state;	// ��һ�ε���ٶ�״̬
-	float current_speed;             				// �����ǰת��	��λ��rpm
-	float last_target_speed;						// ��һ�ε��Ŀ��ת�� ��λ��rpm
-	motor_target_speed target_speed;  				// ���Ŀ��ת��������
-	speed_calc_typedef speed_calc;					// ����˶�����ó�������
-	float accel_decel;					// ������ٻ���ٱ�־
-	float sum_time_all;
-	motor_params_typedef motor_params;				// �������
-	dma_prames dma_prame;							// DMA����	
+    motorindex_enum motorindex;               // 电机索引
+    motor_state_typedef state;                // 电机状态
+    motor_state_typedef last_state;           // 上一次电机状态
+    motor_speed_state_typedef motor_speed_state;      // 电机速度状态
+    motor_speed_state_typedef last_motor_speed_state; // 上一次速度状态
+    float current_speed;                      // 电机当前转速（单位：rpm）
+    float last_target_speed;                  // 上一次目标转速（单位：rpm）
+    motor_target_speed target_speed;          // 电机目标转速结构体
+    speed_calc_typedef speed_calc;            // 速度计算相关参数
+    float accel_decel;                        // 加速度/减速度标志
+    float sum_time_all;                       // 总时间
+    motor_params_typedef motor_params;        // 电机参数
+    dma_prames dma_prame;                     // DMA参数
 } Motor;
 
+// 公式推导：1转 = 360 / 1.8 * 32 = 6400 pulse -> 步进电机频率：72M / 6400 * 60 = 0.675M
 
-// ��ʽ�Ƶ��� 1r = 360 / 1.8 * 32 = 6400 pulse ��> �������Ƶ�ʣ�72M / 6400 * 60 = 0.675M
-// ���Jerk������ز���
-#define JERK_MAX_SPEED RPM_TO_PULSE(MOTOR_MAX_SPEED_RPM)		// Jerk����ٶ� ��λ��pulse/s
-#define JERK_MAX_TIM 0.1f						// Jerk���ʱ�䣨һ��ʱ����٣�һ����٣� ��λ��s
-	// Jerk�Ӽ��ٶȣ���Ϊ�Ӽ��ٶκͼ����ٶΣ�Jerk = 2 * max_speed_error / max_half_time ^ 2  ��λ��pulse/s^3
-#define JERK (float)(JERK_MAX_SPEED / ((JERK_MAX_TIM / 2.0f) * (JERK_MAX_TIM / 2.0f)))	
+// Jerk控制相关参数
+#define JERK_MAX_SPEED RPM_TO_PULSE(MOTOR_MAX_SPEED_RPM)  // Jerk最大速度（单位：pulse/s）
+#define JERK_MAX_TIM 0.1f                                 // Jerk最大时间（一半时间加速，一半时间减速）（单位：s）
+// Jerk加加速度：分为加速度阶段和减速度阶段，Jerk = 2 * max_speed_error / max_half_time^2（单位：pulse/s^3）
+#define JERK (float)(JERK_MAX_SPEED / ((JERK_MAX_TIM / 2.0f) * (JERK_MAX_TIM / 2.0f)))    
 
-	// �ٶȲ�תʱ�� t = sqrt(2 * speed / Jerk) ��λ��s��ֻ��Ҫô���ڼӼ��ٽ׶Σ�Ҫô���ڼ����ٽ׶�
-#define SPEED_TO_TIME(speer_error) (float)(sqrtf(fabs(speer_error) / (float)JERK))
+// 速度差转时间：t = sqrt(2 * speed / Jerk)（单位：s），只需要在加速阶段或减速阶段
+#define SPEED_TO_TIME(speed_error) (float)(sqrtf(fabs(speed_error) / (float)JERK))
 
-	// ʱ��ת�ٶ� v = Jerk * time * time / 2 ��λ��pulse/s
+// 时间转速度：v = Jerk * time * time / 2（单位：pulse/s）
 #define TIME_TO_SPEED(time) (float)(JERK * time * time / 2)
 
-	// ʱ���ת����������������ʼ�ٶȡ��Ӽ��ٶȡ�ʱ�䣩 s = start_speed * time + 1 / 6 * accel * time * time * time ��λ��pulse
+// 时间转脉冲数（考虑起始速度、加速度、时间）：s = start_speed * time + 1/6 * accel * time^3（单位：pulse）
 #define TIME_TO_PULSE(start_speed, accel, time) (uint16_t)(time * start_speed + 1.0f / 6.0f * accel * time * time * time)
 
-	// ��������תʱ�� t = pow(3 * pulse / Jerk) ��λ��s��ֻ��Ҫô���ڼӼ��ٽ׶Σ�Ҫô���ڼ����ٽ׶�
-#define PULSE_TO_TIME(pulse_error) (float)(powf(6 * pulse_error / (float)JERK, 1.0f / 3.0f))	
+// 脉冲差转时间：t = pow(3 * pulse / Jerk)（单位：s），只需要在加速阶段或减速阶段
+#define PULSE_TO_TIME(pulse_error) (float)(powf(6 * pulse_error / (float)JERK, 1.0f / 3.0f))    
 
-	// �������ת�ٷֱ��� rpm * rpm * (psc + 1) / 0.675M ��ת�ٵ�λ��rpm��
+// 速度分辨率计算：rpm * rpm * (psc + 1) / 0.675M（转速单位：rpm）
 #define SPEED_RESOLUTION(rpm, psc) ARR_TO_RPM(RPM_TO_ARR_FLOAT(rpm, psc), psc) - ARR_TO_RPM(RPM_TO_ARR_FLOAT(rpm, psc) - 1.0f, psc)
 
-// ��������������Բ���
-#define MOTOR_MAX_SPEED_RPM 600.0f	// ����������ת�� ��λ��RPM
-#define MOTOR_STEP_ANGLE 1.8f		// ������������Ƕ� һ��1.8��
-#define MOTOR_SUBDIVIDE	 32			// ���ϸ�ֶ� 32����һ��
-#define R_TO_PULSE (float)(360.0f / MOTOR_STEP_ANGLE * MOTOR_SUBDIVIDE)	// һȦת����������� 6400pulse
-#define _01RPM_TO_RPM(_01rpm) (float)((_01rpm) * 0.1f)	// 0.1rpmתrpm
-#define RPM_TO_PULSE(rpm) (float)((rpm) * (float)R_TO_PULSE / 60.0f)		// RPMת������ ��rpmת��pulse/s
-#define PULSE_TO_ARR(pulse, psc) (TIM_COUNT_FREQ(psc) / pulse - 1.0f)		// �������ٶ�ת��ʱ��ARRֵ ��pulse/sת��ARRֵ
-#define RPM_TO_ARR_FLOAT(rpm, psc) (float)((TIM_COUNT_FREQ(psc) * 60.0f) / ( (rpm) * R_TO_PULSE ) - 1.0f)	// ��ʱ��ARRֵת�������ת�� ��rpmת��ARRֵ
-#define RPM_TO_ARR(rpm, psc) (uint16_t)((TIM_COUNT_FREQ(psc) * 60.0f) / ( (float)(rpm) * R_TO_PULSE ) - 1.0f)	// ��ʱ��ARRֵת�������ת�� ��rpmת��ARRֵ
-#define ARR_TO_RPM(arr, psc) (float)(TIM_COUNT_FREQ(psc) / R_TO_PULSE * 60.0f / ((uint16_t)arr + 1.0f))	// ��ʱ��ARRֵת�������ת�� ��ARRֵת��rpm ��λ��rpm	72M / (psc + 1) / 6400 * 60 / (arr + 1)
-#define MOTOR_SPEED_MIN(psc) (TIM_COUNT_FREQ(psc) / (65536.0f))  				// ����ٶȣ�����Ƶ��/(���ARR)
+// 步进电机参数
+#define MOTOR_MAX_SPEED_RPM 600.0f     // 步进电机最大转速（单位：RPM）
+#define MOTOR_STEP_ANGLE 1.8f          // 步进电机步距角（1.8度）
+#define MOTOR_SUBDIVIDE 32             // 细分倍数（32细分）
+#define R_TO_PULSE (float)(360.0f / MOTOR_STEP_ANGLE * MOTOR_SUBDIVIDE) // 一圈转动的脉冲数（6400 pulse）
+#define _01RPM_TO_RPM(_01rpm) (float)((_01rpm) * 0.1f) // 0.1rpm转rpm
+#define RPM_TO_PULSE(rpm) (float)((rpm) * (float)R_TO_PULSE / 60.0f) // RPM转脉冲频率（rpm转pulse/s）
+#define PULSE_TO_ARR(pulse, psc) (TIM_COUNT_FREQ(psc) / pulse - 1.0f) // 脉冲频率转定时器ARR值（pulse/s转ARR值）
+#define RPM_TO_ARR_FLOAT(rpm, psc) (float)((TIM_COUNT_FREQ(psc) * 60.0f) / ( (rpm) * R_TO_PULSE ) - 1.0f) // 转速转ARR值（rpm转ARR值）
+#define RPM_TO_ARR(rpm, psc) (uint16_t)((TIM_COUNT_FREQ(psc) * 60.0f) / ( (float)(rpm) * R_TO_PULSE ) - 1.0f) // 转速转ARR值（rpm转ARR值）
+#define ARR_TO_RPM(arr, psc) (float)(TIM_COUNT_FREQ(psc) / R_TO_PULSE * 60.0f / ((uint16_t)arr + 1.0f)) // ARR值转转速（ARR值转rpm，单位：rpm）
+#define MOTOR_SPEED_MIN(psc) (TIM_COUNT_FREQ(psc) / (65536.0f)) // 最小速度（计数器频率/(最大ARR)）
 
-// ��ʱ������
-#define TIM_CLK_FREQ 72000000	// ��ʱ����Ƶ�� 72MHz
-#define TIM_COUNT_FREQ(psc) (float)(TIM_CLK_FREQ / (psc + 1.0f))	// ��ʱ������Ƶ�� ��ʱ����Ƶ / psc + 1 ��λ��Hz
-#define TIM_COUNT_MAX 65535		// ��ʱ���������ֵ 65535
+// 定时器相关
+#define TIM_CLK_FREQ 72000000                          // 定时器时钟频率 72MHz
+#define TIM_COUNT_FREQ(psc) (float)(TIM_CLK_FREQ / (psc + 1.0f)) // 定时器计数频率（定时器时钟 / (psc + 1)）（单位：Hz）
+#define TIM_COUNT_MAX 65535                             // 定时器计数器最大值 65535
 
-// ���١����ٽ׶ζ�Ӧ�Ĳ������ٶȵ�λrpm��
-#define TIM_LOW_SPEED_PSC 205			// 102
-#define TIM_HIGH_SPEED_PSC 0			// ���ٽ׶ζ�ʱ��Ԥ��Ƶֵ��20.6-259.6��
-#define LOW_HIGH_SWITCH_SPEED 18.1		// ����������л��ٶȣ��ֽ��ߣ� 20.6rpm 20.6
-#define HIGH_ADJUST_SWITCH_SPEED 259.8	// ������΢���л��ٶȣ��ֽ��ߣ� 259.8rpm
-// ����ϸ�ֲ���������ʱ��߷ֱ��ʣ�
-#define SUBDIVIDE_RATIO 7				// 7��ϸ��
-#define SUBDIVIDE_INTERVAL_US 1000		// ϸ����������1ms��
-#define SUBDIVIDE_CYCLE_MS 7			// ϸ�����ڣ�7ms=7��1ms��
+// 速度阶段对应的参数
+#define TIM_LOW_SPEED_PSC 205                          // 低速阶段定时器预分频值
+#define TIM_HIGH_SPEED_PSC 0                           // 高速阶段定时器预分频值
+#define LOW_HIGH_SWITCH_SPEED 18.1                     // 低速到高速切换速度（分界线）
+#define HIGH_ADJUST_SWITCH_SPEED 259.8                 // 高速到微调切换速度（分界线）
 
+// 高速细分参数（提高速度分辨率）
+#define SUBDIVIDE_RATIO 7                              // 7细分
+#define SUBDIVIDE_CYCLE_MS 7                           // 细分周期（7ms = 7 * 1ms）
+
+// 数值限制宏
 #define IFR_CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
 
-
-// ���е����ʼ��
-void motor_all_init(void);
-
-// ���ʹ��
-void motor_enable(motorindex_enum motor_index);
-
-// ���ʧ��
-void motor_disable(motorindex_enum motor_index);
-
-// �������
-void motor_control(motorindex_enum motor_index, uint16_t target_speed);
-
-// ���õ��Ŀ���ٶ�
-void motor_set_speed(motorindex_enum motor_index, uint16_t speed);
-
-// ��ȡ�����ǰ�ٶ�
-float motor_get_speed(motorindex_enum motor_index);
-
-static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, uint32_t channel,	GPIO_TypeDef* enable_port, uint32_t enable_pin);
-
-static void motor_tim_config_set(motorindex_enum motor_index);
-
-static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed);
-
-static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, uint16_t target_speed, float jerk);
-
-static void motor_high_speed_minor_adjust(motorindex_enum motor_index, uint16_t target_speed);
-
+// 函数声明
+void motor_all_init(void);                             // 所有电机初始化
+void motor_enable(motorindex_enum motor_index);        // 电机使能
+void motor_disable(motorindex_enum motor_index);       // 电机失能
+void motor_control(motorindex_enum motor_index, uint16_t target_speed); // 电机控制
+void motor_set_speed(motorindex_enum motor_index, uint16_t speed); // 设置电机目标速度
+float motor_get_speed(motorindex_enum motor_index);    // 获取电机当前速度
+static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, 
+                      uint32_t channel, GPIO_TypeDef* enable_port, uint32_t enable_pin); // 电机初始化
+static void motor_tim_config_set(motorindex_enum motor_index); // 定时器配置设置
+static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed); // 设置电机状态
+static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, 
+                              uint16_t target_speed, float jerk); // Jerk控制
+static void motor_high_speed_minor_adjust(motorindex_enum motor_index, 
+                                         uint16_t target_speed); // 高速微调
 static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, 
-                                          uint32_t arr_count, dma_mode_enum mode);
+                                          uint32_t arr_count, dma_mode_enum mode); // DMA传输
+static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma); // DMA传输完成回调
+static void motor_dma_error_callback(DMA_HandleTypeDef *hdma); // DMA传输错误回调
+void test_control_time(void); // 测试控制时间
 
-static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma);
-
-static void motor_dma_error_callback(DMA_HandleTypeDef *hdma);
-
-void test_control_time(void);
 #endif

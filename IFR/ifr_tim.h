@@ -1,5 +1,5 @@
-#ifndef _TIMER_H_
-#define _TIMER_H_
+#ifndef _IFR_TIM_H_
+#define _IFR_TIM_H_
 
 #include "main.h"
 
@@ -10,12 +10,12 @@ typedef struct
 {
 	TIM_HandleTypeDef* timer;	// 定时器句柄
 	void (*callback)(void);		// 定时器回调函数
-} timer_typedef;                /*定时器结构体*/
+} ifr_tim_typedef;                /*定时器结构体*/
 
-void timer_start(timer_typedef * timer_t, TIM_HandleTypeDef* htim, void (*callback)(void));
+void ifr_tim_start(ifr_tim_typedef * timer_t, TIM_HandleTypeDef* htim, void (*callback)(void));
 
-static void TaskFunction_Call(timer_typedef * timer_t);
+static void TaskFunction_Call(ifr_tim_typedef * timer_t);
 
 static uint8_t IFR_TIM_ID_GET(TIM_HandleTypeDef *htim);
 #endif
-#endif // _TIMER_H_
+#endif // _IFR_TIM_H_

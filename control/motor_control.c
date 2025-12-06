@@ -1,484 +1,507 @@
 #include "motor_control.h"
 Motor Motor_list[MOTOR_COUNT];
 float now_speed = 0;
-// ËùÓĞµç»ú³õÊ¼»¯
+
+// æ‰€æœ‰ç”µæœºåˆå§‹åŒ–
 void motor_all_init()
 {
-	motor_init(MOTOR_1, &htim2, TIM_CHANNEL_2, M1_EN_GPIO_Port, M1_EN_Pin);
-	motor_init(MOTOR_2, &htim3, TIM_CHANNEL_3, M2_EN_GPIO_Port, M2_EN_Pin);
-	motor_init(MOTOR_3, &htim4, TIM_CHANNEL_1, M3_EN_GPIO_Port, M3_EN_Pin);
-	motor_init(MOTOR_4, &htim5, TIM_CHANNEL_2, M4_EN_GPIO_Port, M4_EN_Pin);
+    motor_init(MOTOR_1, &htim2, TIM_CHANNEL_2, M1_EN_GPIO_Port, M1_EN_Pin);
+    motor_init(MOTOR_2, &htim3, TIM_CHANNEL_3, M2_EN_GPIO_Port, M2_EN_Pin);
+    motor_init(MOTOR_3, &htim4, TIM_CHANNEL_1, M3_EN_GPIO_Port, M3_EN_Pin);
+    motor_init(MOTOR_4, &htim5, TIM_CHANNEL_2, M4_EN_GPIO_Port, M4_EN_Pin);
 }
+
 uint16_t target_arr = 65535;
 uint8_t start = 1;
-// µ¥¸öµç»ú¶ÔÓ¦µÄ¿ØÖÆ
+
+// ç”µæœºæ§åˆ¶å‡½æ•°
 void motor_control(motorindex_enum motor_index, uint16_t target_speed)
 {
-
-	target_speed = IFR_CLAMP(target_speed, 0, 6000);	// ½«µç»ú×ªËÙÏŞÖÆÔÚ0-600rpmÖ®¼ä
-	motor_enable(motor_index);	// Ê¹ÄÜµç»ú
-	if (start == 1)
-	{
-		start = 1;
-		uint32_t psc = Motor_list[motor_index].speed_calc.psc;
-		// ¼ÆËãÄ¿±êARR£¨50rpm¶ÔÓ¦13499£©
-
-		// ´æ´¢µ¥¸öÄ¿±êARR£¬Ñ­»·DMA´«Êä
-		Motor_list[motor_index].speed_calc.toggle_pulse[0] = target_arr;
-		Motor_list[motor_index].speed_calc.accel_pulse = 1;
-		// Æô¶¯Ñ­»·DMA£¬Î¬³Ö¹Ì¶¨Âö³åÆµÂÊ
-		motor_dma_transmit(motor_index, Motor_list[motor_index].speed_calc.toggle_pulse, 1, DMA_MODE_NORMAL);
-	}
-//	motor_set_state(motor_index, target_speed); 			// ÉèÖÃµç»ú×´Ì¬   
-//	motor_set_speed(motor_index, target_speed); 			// ¸ù¾İµç»ú×´Ì¬ÉèÖÃµç»úËÙ¶È
-	// test_control_time();
+    target_speed = IFR_CLAMP(target_speed, 0, 6000); // é™åˆ¶ç”µæœºé€Ÿåº¦èŒƒå›´ä¸º0-600rpm
+//    motor_enable(motor_index); // ä½¿èƒ½ç”µæœº
+    
+//    if (start == 1)
+//    {
+//        start = 1;
+//        uint32_t psc = Motor_list[motor_index].speed_calc.psc;
+//        
+//        // è®¡ç®—ç›®æ ‡ARRå€¼ï¼ˆ50rpmå¯¹åº”13499ï¼‰
+//        // å°†ç›®æ ‡ARRå€¼æ”¾å…¥DMAä¼ è¾“æ•°ç»„ä¸­
+//        Motor_list[motor_index].speed_calc.toggle_pulse[0] = target_arr;
+//        Motor_list[motor_index].speed_calc.accel_pulse = 1;
+//        
+//        // å¯åŠ¨DMAä¼ è¾“æ›´æ–°ARRå€¼
+//        motor_dma_transmit(motor_index, Motor_list[motor_index].speed_calc.toggle_pulse, 1, DMA_MODE_NORMAL);
+//    }
+	motor_set_state(motor_index, target_speed);
+	motor_set_speed(motor_index, target_speed);
 }
 
-// µç»úÊ¹ÄÜ
+// ç”µæœºä½¿èƒ½
 void motor_enable(motorindex_enum motor_index)
 {
-	if(motor_index >= MOTOR_COUNT)
-		return;
-	HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_SET);
+    if(motor_index >= MOTOR_COUNT)
+        return;
+    HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, 
+                     Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_SET);
 }
 
-// µç»úÊ§ÄÜ
+// ç”µæœºå¤±èƒ½
 void motor_disable(motorindex_enum motor_index)
 {
-	// ¼ì²éµç»úË÷ÒıÊÇ·ñÓĞĞ§£¬Èç¹û³¬³ö·¶Î§ÔòÖ±½Ó·µ»Ø
-	if(motor_index >= MOTOR_COUNT)
-		return;
-	// ½«¶ÔÓ¦µç»úµÄÊ¹ÄÜÒı½ÅÉèÖÃÎªµÍµçÆ½£¬½ûÓÃµç»ú
-	HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_RESET);
-	Motor_list[motor_index].current_speed = 0;
+    // å½“ç”µæœºéœ€è¦åœæ­¢æ—¶ï¼Œå…ˆè¿›è¡Œå‡é€Ÿå¤„ç†ï¼Œç„¶åå†å…³é—­ä½¿èƒ½
+    if(motor_index >= MOTOR_COUNT)
+        return;
+    
+    // å°†ç”µæœºä½¿èƒ½å¼•è„šè®¾ç½®ä¸ºä½ç”µå¹³ï¼Œä»è€Œå…³é—­ç”µæœº
+    HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, 
+                     Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_RESET);
+    Motor_list[motor_index].current_speed = 0;
 }
 
 int ARR_2 = 0;
 float resolution = 0;
-// µç»ú×´Ì¬»úÉèÖÃ×´Ì¬£¨¸ù¾İµ±Ç°ËÙ¶ÈºÍÄ¿±êËÙ¶È£©
+
+// ç”µæœºçŠ¶æ€æœºï¼šæ ¹æ®å½“å‰é€Ÿåº¦å’Œç›®æ ‡é€Ÿåº¦è®¾ç½®çŠ¶æ€
 static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed)
 {
-	Motor *this_motor = &Motor_list[motor_index];	//	¶ÔÁÙÊ±±äÁ¿¸³Öµ£¬Ëõ¶Ì´úÂë³¤¶È
-	float tar_speed = _01RPM_TO_RPM(target_speed);
-	now_speed = ARR_TO_RPM(this_motor->motor_params.timer->Instance->ARR, this_motor->motor_params.timer->Instance->PSC);
-	ARR_2 = this_motor->motor_params.timer->Instance->ARR;
-	resolution = SPEED_RESOLUTION(tar_speed, this_motor->speed_calc.psc);
-	// ÅĞ¶Ïµç»ú´¦ÓÚÍ£Ö¹¡¢ÔÈËÙ¡¢±äËÙ×´Ì¬
-	if (this_motor->current_speed + tar_speed < 0.01f)
-	    this_motor->state = MOTOR_IDLE;
-	
-	else if (fabs(this_motor->current_speed - tar_speed) <= 0.54f && this_motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST)	// Èôµç»úµ±Ç°ËÙ¶ÈµÈÓÚÄ¿±êËÙ¶È£¨´ïµ½µ±Ç°·Ö±æÂÊÉÏÏŞ£© SPEED_RESOLUTION(tar_speed, this_motor->speed_calc.psc) * 2.0f
-	    this_motor->state = MOTOR_AVESPEED;
+    Motor *this_motor = &Motor_list[motor_index]; // è·å–å½“å‰ç”µæœºå¯¹è±¡
+    float tar_speed = _01RPM_TO_RPM(target_speed);
+    now_speed = ARR_TO_RPM(this_motor->motor_params.timer->Instance->ARR, 
+                          this_motor->motor_params.timer->Instance->PSC);
+    ARR_2 = this_motor->motor_params.timer->Instance->ARR;
+    resolution = SPEED_RESOLUTION(tar_speed, this_motor->speed_calc.psc);
+    
+    // åˆ¤æ–­ç”µæœºå½“å‰çŠ¶æ€ï¼šåœæ­¢ã€æ’é€Ÿã€åŠ é€Ÿå‡é€Ÿ
+    if (this_motor->current_speed + tar_speed < 0.01f)
+        this_motor->state = MOTOR_IDLE;
+    
+    else if (fabs(this_motor->current_speed - tar_speed) <= 0.54f && this_motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST)
+        this_motor->state = MOTOR_AVESPEED;
 
-	else if (fabs(this_motor->current_speed - tar_speed) >= 0.1f)	// Èôµç»úµ±Ç°ËÙ¶È²»µÈÓÚÄ¿±êËÙ¶È°¡£¨Îó²î0.1£©
-	    this_motor->state = MOTOR_ACTIVE;
+    else if (fabs(this_motor->current_speed - tar_speed) >= 0.1f)
+        this_motor->state = MOTOR_ACTIVE;
+		
+		else 
+			this_motor->state = MOTOR_AVESPEED;
 
-	// ÅĞ¶Ïµç»úËÙ¶È·¶Î§
-	if (tar_speed == 0 || this_motor->state == MOTOR_IDLE)
-		this_motor->motor_speed_state = MOTOR_STOP;	// Í£Ö¹×´Ì¬
+    // åˆ¤æ–­ç”µæœºé€Ÿåº¦çŠ¶æ€
+    if (tar_speed == 0 || this_motor->state == MOTOR_IDLE)
+        this_motor->motor_speed_state = MOTOR_STOP; // åœæ­¢çŠ¶æ€
 
     else if (0 < tar_speed && tar_speed < LOW_HIGH_SWITCH_SPEED)
-		this_motor->motor_speed_state = MOTOR_LOW_SPEED_STATE;	// µÍËÙ×´Ì¬
+        this_motor->motor_speed_state = MOTOR_LOW_SPEED_STATE; // ä½é€ŸçŠ¶æ€
 
-	else if (LOW_HIGH_SWITCH_SPEED <= tar_speed && tar_speed < HIGH_ADJUST_SWITCH_SPEED)
-		this_motor->motor_speed_state = MOTOR_HIGH_SPEED_STATE;	// ¸ßËÙ×´Ì¬
+    else if (LOW_HIGH_SWITCH_SPEED <= tar_speed && tar_speed < HIGH_ADJUST_SWITCH_SPEED)
+        this_motor->motor_speed_state = MOTOR_HIGH_SPEED_STATE; // é«˜é€ŸçŠ¶æ€
 
-	else if (HIGH_ADJUST_SWITCH_SPEED <= tar_speed && tar_speed <= MOTOR_MAX_SPEED_RPM)
-		this_motor->motor_speed_state = MOTOR_HIGH_MINOR_ADJUST;	// ¸ßËÙ¸ß¾«¶Èµ÷Õû×´Ì¬
-	
+    else if (HIGH_ADJUST_SWITCH_SPEED <= tar_speed && tar_speed <= MOTOR_MAX_SPEED_RPM)
+        this_motor->motor_speed_state = MOTOR_HIGH_MINOR_ADJUST; // é«˜é€Ÿå¾®è°ƒçŠ¶æ€
 }
 
-// µç»úÉèÖÃËÙ¶È
+// ç”µæœºé€Ÿåº¦è®¾ç½®
 void motor_set_speed(motorindex_enum motor_index, uint16_t speed)
 {
-	if (motor_index >= MOTOR_COUNT)
-		return;
-	
-	Motor *motor = &Motor_list[motor_index];	//	¶ÔÁÙÊ±±äÁ¿¸³Öµ£¬Ëõ¶Ì´úÂë³¤¶È
-	float target_rpm = _01RPM_TO_RPM(speed);
-	if (motor->last_motor_speed_state != motor->motor_speed_state)	// Èôµç»úËÙ¶È·¶Î§·¢Éú±ä»¯
-		motor_tim_config_set(motor_index);
-		
-	motor->last_motor_speed_state = motor->motor_speed_state;
-	
-	if (motor->motor_speed_state == MOTOR_STOP)
-	{
-		motor_disable(motor_index);	// Ê§ÄÜµç»ú
-		motor->last_target_speed = 0;
-		return;
-	}
-	else 
-		motor_enable(motor_index);	// Ê¹ÄÜµç»ú
+    if (motor_index >= MOTOR_COUNT)
+        return;
+    
+    Motor *motor = &Motor_list[motor_index]; // è·å–å½“å‰ç”µæœºå¯¹è±¡
+    float target_rpm = _01RPM_TO_RPM(speed);
+    
+    if (motor->last_motor_speed_state != motor->motor_speed_state) // å¦‚æœç”µæœºé€Ÿåº¦çŠ¶æ€å‘ç”Ÿå˜åŒ–
+        motor_tim_config_set(motor_index);
+        
+    motor->last_motor_speed_state = motor->motor_speed_state;
+    
+    if (motor->motor_speed_state == MOTOR_STOP)
+    {
+        motor_disable(motor_index); // å¤±èƒ½ç”µæœº
+        motor->last_target_speed = 0;
+        return;
+    }
+    else 
+        motor_enable(motor_index); // ä½¿èƒ½ç”µæœº
 
-	if (motor->last_target_speed != target_rpm)	//	Èôµç»úÄ¿±êËÙ¶È·¢Éú±ä»¯£¬´¦ÓÚ±äËÙ×´Ì¬ this_motor->state == MOTOR_ACTIVE && 
-	{
-		motor_jerk_control(motor_index, motor->current_speed * 10.0f, speed, JERK);	// ¼ÆËãµç»úÃ¿Ò»²½²ÎÊı£¬²¢Íê³ÉDMA·¢ËÍ			
-		motor->last_target_speed = target_rpm;
-	}
+    if (motor->last_target_speed != target_rpm) // å¦‚æœç”µæœºç›®æ ‡é€Ÿåº¦å‘ç”Ÿå˜åŒ–
+    {
+        motor_jerk_control(motor_index, motor->current_speed * 10.0f, speed, JERK); // ä½¿ç”¨Jerkæ§åˆ¶å¹³æ»‘åŠ é€Ÿ       
+        motor->last_target_speed = target_rpm;
+    }
 
-	else if (motor->state == MOTOR_AVESPEED)	// Èôµç»úµ±Ç°ËÙ¶ÈµÈÓÚÄ¿±êËÙ¶È
-	{
-
-		if (motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST && motor->last_state == MOTOR_ACTIVE)	// Èôµç»ú´¦ÓÚ¸ß×ªËÙ¸ß¾«¶Èµ÷Õû×´Ì¬²¢ÇÒÉÏÒ»¿ÌÎª±äËÙÄ£Ê½
-			motor_high_speed_minor_adjust(motor_index, speed); // Æô¶¯Èí¼ş7±¶Ï¸·ÖËã·¨
-//		else 
-//    {
-//        uint32_t psc = motor->speed_calc.psc;
-//        // ¼ÆËãÄ¿±êARR£¨50rpm¶ÔÓ¦13499£©
-//        uint16_t target_arr = (uint16_t)IFR_CLAMP(RPM_TO_ARR_FLOAT(target_rpm, psc), 1, TIM_COUNT_MAX);
-//        // ´æ´¢µ¥¸öÄ¿±êARR£¬Ñ­»·DMA´«Êä
-//        motor->speed_calc.toggle_pulse[0] = target_arr;
-//        motor->speed_calc.accel_pulse = 1;
-//        // Æô¶¯Ñ­»·DMA£¬Î¬³Ö¹Ì¶¨Âö³åÆµÂÊ
-//        motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, 1, DMA_MODE_CIRCULAR);
-//    }
-	}
-	if (motor->state == MOTOR_ACTIVE)
-	{
-		
-	}
-	motor->last_state = motor->state;
+    else if (motor->state == MOTOR_AVESPEED) // å¦‚æœç”µæœºå½“å‰é€Ÿåº¦æ¥è¿‘ç›®æ ‡é€Ÿåº¦
+    {
+        if (motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST && motor->last_state == MOTOR_ACTIVE) // å¦‚æœç”µæœºåœ¨é«˜é€Ÿå¾®è°ƒçŠ¶æ€ä¸­ã€‚ä»åŠ é€Ÿè¿‡ç¨‹åˆ‡æ¢è‡³åŒ€é€Ÿè¿‡ç¨‹
+				{
+					
+           motor_high_speed_minor_adjust(motor_index, speed); // ä½¿ç”¨é«˜é€Ÿå¾®è°ƒç®—æ³•
+					
+				}
+    }
+    
+    if (motor->state == MOTOR_ACTIVE)
+    {
+        // åŠ é€Ÿ/å‡é€Ÿå¤„ç†
+    }
+    motor->last_state = motor->state;
+   
 }
 
-// µ¥¸öµç»úJERK¿ØÖÆ½µËÙµ½0
+// ç”µæœºåœæ­¢æ§åˆ¶ï¼ˆä½¿ç”¨Jerkå¹³æ»‘åœæ­¢åˆ°0ï¼‰
 void motor_stop(motorindex_enum motor_index)
 {
-	motor_jerk_control(motor_index, Motor_list[motor_index].current_speed, 0, JERK);
+    motor_jerk_control(motor_index, Motor_list[motor_index].current_speed, 0, JERK);
 }
 
-// »ñÈ¡µç»úµ±Ç°ËÙ¶È
+// è·å–ç”µæœºå½“å‰é€Ÿåº¦
 float motor_get_speed(motorindex_enum motor_index)
 {
-	return ARR_TO_RPM(Motor_list[motor_index].motor_params.timer->Instance->ARR, 
-		Motor_list[motor_index].motor_params.timer->Instance->PSC);
+    return ARR_TO_RPM(Motor_list[motor_index].motor_params.timer->Instance->ARR, 
+                     Motor_list[motor_index].motor_params.timer->Instance->PSC);
 };
 
-// µ¥¸öµç»ú³õÊ¼»¯
-static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, uint32_t channel,	GPIO_TypeDef* enable_port, uint32_t enable_pin)
+// ç”µæœºåˆå§‹åŒ–
+static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, uint32_t channel,
+                      GPIO_TypeDef* enable_port, uint32_t enable_pin)
 {
-	Motor_list[motor_index].motorindex = motor_index;
-	Motor_list[motor_index].state = MOTOR_IDLE;
-	Motor_list[motor_index].current_speed = 0;
-	memset(Motor_list[motor_index].speed_calc.toggle_pulse, 0, sizeof(Motor_list[motor_index].speed_calc.toggle_pulse));
-	Motor_list[motor_index].target_speed.target_speed = 0;
-	Motor_list[motor_index].motor_params.timer = timer;
-	Motor_list[motor_index].motor_params.channel = channel;
-	Motor_list[motor_index].motor_params.enable_port = enable_port;
-	Motor_list[motor_index].motor_params.enable_pin = enable_pin;
-	Motor_list[motor_index].last_target_speed = 0;
-	Motor_list[motor_index].last_motor_speed_state = MOTOR_STOP;
-	motor_tim_config_set(motor_index);
+    Motor_list[motor_index].motorindex = motor_index;
+    Motor_list[motor_index].state = MOTOR_IDLE;
+    Motor_list[motor_index].current_speed = 0;
+    memset(Motor_list[motor_index].speed_calc.toggle_pulse, 0, 
+           sizeof(Motor_list[motor_index].speed_calc.toggle_pulse));
+    Motor_list[motor_index].target_speed.target_speed = 0;
+    Motor_list[motor_index].motor_params.timer = timer;
+    Motor_list[motor_index].motor_params.channel = channel;
+    Motor_list[motor_index].motor_params.enable_port = enable_port;
+    Motor_list[motor_index].motor_params.enable_pin = enable_pin;
+    Motor_list[motor_index].last_target_speed = 0;
+    Motor_list[motor_index].last_motor_speed_state = MOTOR_STOP;
+    motor_tim_config_set(motor_index);
 }
 
 float MIN_SPEED = 0;
 int num_3 = 0;
 
-// µç»úJerk¿ØÖÆ£¨SĞÍÇúÏß£ºÊ±¼äµü´ú+°´Âö³å´æ´¢ARR£©
-static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, uint16_t target_speed, float jerk)
+// ç”µæœºJerkæ§åˆ¶ï¼šSæ›²çº¿åŠ å‡é€Ÿï¼Œæ—¶é—´åŒæ­¥è®¡ç®—+æ›´æ–°ARRå€¼
+static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, 
+                              uint16_t target_speed, float jerk)
 {
-	num_3++;
-	float start_rpm = _01RPM_TO_RPM(start_speed);
-	float target_rpm = _01RPM_TO_RPM(target_speed);
-	Motor* motor = &Motor_list[motor_index];
-	motor->target_speed.target_speed = target_speed;
-	uint32_t psc = motor->speed_calc.psc;						// »ñÈ¡µ±Ç°µç»úÉèÖÃµÄpsc
+    num_3++;
+    float start_rpm = _01RPM_TO_RPM(start_speed);
+    float target_rpm = _01RPM_TO_RPM(target_speed);
+    Motor* motor = &Motor_list[motor_index];
+    motor->target_speed.target_speed = target_speed;
+    uint32_t psc = motor->speed_calc.psc; // è·å–å½“å‰ç”µæœºçš„pscå€¼
 
-	// ×îĞ¡ËÙ¶ÈÏŞÖÆ£¨pulse/s£©
-	MIN_SPEED = MOTOR_SPEED_MIN(psc);
+    // è®¡ç®—æœ€å°é€Ÿåº¦é™åˆ¶ï¼ˆè„‰å†²/ç§’ï¼‰
+    MIN_SPEED = MOTOR_SPEED_MIN(psc);
 
-	// ×ª»»ÎªÂö³åÆµÂÊ£¨pulse/s£©
-	float start_pulse = RPM_TO_PULSE(start_rpm);
-	float target_pulse = RPM_TO_PULSE(target_rpm);
-	float speed_error = target_pulse - start_pulse;
+    // è½¬æ¢ä¸ºè„‰å†²é¢‘ç‡ï¼ˆè„‰å†²/ç§’ï¼‰
+    float start_pulse = RPM_TO_PULSE(start_rpm);
+    float target_pulse = RPM_TO_PULSE(target_rpm);
+    float speed_error = target_pulse - start_pulse;
 
-	// ÖÕÖ¹Ìõ¼ş£ºËÙ¶È²î¹ıĞ¡»òÄ¿±êËÙ¶ÈÎª0
-	if (target_rpm == 0.0f) 
-	{
-		motor_disable(motor_index);	// Ê§ÄÜµç»ú
-		return;
-	}
+    // å¦‚æœç›®æ ‡é€Ÿåº¦ä¸º0ï¼Œåˆ™ç›´æ¥åœæ­¢
+    if (target_rpm == 0.0f) 
+    {
+        motor_disable(motor_index); // å¤±èƒ½ç”µæœº
+        return;
+    }
 
-	// ¼ÓËÙ·½Ïò£¨1:¼ÓËÙ£¬-1:¼õËÙ£©
-	int8_t accel_direction = (speed_error > 0) ? 1 : -1;
-	float JERK_effective = accel_direction * jerk;
+    // åŠ é€Ÿåº¦æ–¹å‘åˆ¤æ–­ï¼š1:åŠ é€Ÿï¼Œ-1:å‡é€Ÿ
+    int8_t accel_direction = (speed_error > 0) ? 1 : -1;
+    float JERK_effective = accel_direction * jerk;
 
-	// ¼ÆËã¼Ó¼ÓËÙ/¼õ¼ÓËÙ½×¶ÎÊ±¼ä£¨T£©ºÍ×ÜÊ±¼ä
-	float T = SPEED_TO_TIME(speed_error);  // µ¥½×¶ÎÊ±¼ä
-	float total_time = 2 * T;                  // ×Ü¼Ó¼õËÙÊ±¼ä
+    // è®¡ç®—åŠ é€Ÿ/å‡é€Ÿæ®µçš„æ—¶é—´Tå’Œæ€»æ—¶é—´
+    float T = SPEED_TO_TIME(speed_error); // åŠ é€Ÿæ®µæ—¶é—´
+    float total_time = 2 * T; // æ€»åŠ é€Ÿå‡é€Ÿæ—¶é—´
 
-	// ¼ÆËã¼Ó¼ÓËÙ½×¶ÎÖÕµãËÙ¶Èv_mid£¨²»µÍÓÚ×îĞ¡ËÙ¶È£©
-	float v_mid = start_pulse + JERK_effective * 0.5f * (T * T);
-	if (v_mid < MIN_SPEED)
-			v_mid = MIN_SPEED;
+    // è®¡ç®—åŠ é€Ÿæ®µä¸­é—´é€Ÿåº¦v_midï¼Œç¡®ä¿ä¸ä½äºæœ€å°é€Ÿåº¦
+    float v_mid = start_pulse + JERK_effective * 0.5f * (T * T);
+    if (v_mid < MIN_SPEED)
+        v_mid = MIN_SPEED;
 
-	// ³õÊ¼»¯±äÁ¿
-	float current_speed = start_pulse;  // µ±Ç°ËÙ¶È£¨pulse/s£©
-	float sum_time = 0.0f;              // ÀÛ¼ÆÊ±¼ä
-	uint16_t pulse_count = 0;           // Âö³å¼ÆÊı
-	memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse));
+    // åˆå§‹åŒ–å˜é‡
+    float current_speed = start_pulse; // å½“å‰é€Ÿåº¦ï¼ˆè„‰å†²/ç§’ï¼‰
+    float sum_time = 0.0f; // ç´¯è®¡æ—¶é—´
+    uint16_t pulse_count = 0; // è„‰å†²è®¡æ•°
+    memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse));
 
-	// µÚÒ»²½£ºÈôµ±Ç°ËÙ¶ÈµÍÓÚ×îĞ¡ËÙ¶È£¬ÏÈ¼ÓËÙµ½×îĞ¡ËÙ¶È
-	if (current_speed < MIN_SPEED) 
-	{
-		float t_start = sqrt(2 * (MIN_SPEED - current_speed) / jerk);
-		t_start = (t_start < 1e-6f) ? 1e-6f : t_start;  // ±ÜÃâÊ±¼äÎª0
+    // å¦‚æœå½“å‰é€Ÿåº¦ä½äºæœ€å°é€Ÿåº¦ï¼Œå…ˆåŠ é€Ÿåˆ°æœ€å°é€Ÿåº¦
+    if (current_speed < MIN_SPEED) 
+    {
+        float t_start = sqrt(2 * (MIN_SPEED - current_speed) / jerk);
+        t_start = (t_start < 1e-6f) ? 1e-6f : t_start; // é˜²æ­¢æ—¶é—´ä¸º0
 
-		current_speed = MIN_SPEED;
-		uint16_t start_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 1, TIM_COUNT_MAX);
-		motor->speed_calc.toggle_pulse[pulse_count++] = start_arr;
-		sum_time = t_start;
-	}
+        current_speed = MIN_SPEED;
+        uint16_t start_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 1, TIM_COUNT_MAX);
+        motor->speed_calc.toggle_pulse[pulse_count++] = start_arr;
+        sum_time = t_start;
+    }
 
-	// ºËĞÄÑ­»·£ºSĞÍÇúÏßµü´ú¼ÆËã
-	while (pulse_count < SPEED_MAX_PLUSE && sum_time < total_time) 
-	{
-		// ¼ÆËãµ±Ç°²½Ê±¼ä¼ä¸ô£¨1/µ±Ç°ËÙ¶È£©
-		float step_time = 1.0f / current_speed;
-		sum_time += step_time;
+    // å¾ªç¯è®¡ç®—Sæ›²çº¿æ¯ä¸ªç‚¹çš„ARRå€¼
+    while (pulse_count < SPEED_MAX_PLUSE && sum_time < total_time) 
+    {
+        // è®¡ç®—å½“å‰æ­¥é•¿æ—¶é—´ï¼ˆ1/å½“å‰é€Ÿåº¦ï¼‰
+        float step_time = 1.0f / current_speed;
+        sum_time += step_time;
 
-		// ·Ö½×¶Î¼ÆËãµ±Ç°ËÙ¶È
-		if (sum_time < T) 
-			// ¼Ó¼ÓËÙ½×¶Î£ºv = v0 + 0.5 * J_eff * t2
-			current_speed = start_pulse + JERK_effective * 0.5f * (sum_time * sum_time);
-		else 
-			// ¼õ¼ÓËÙ½×¶Î£ºv = -0.5*J_eff*t2 + 2*J_eff*T*t - J_eff*T2 + v0
-			current_speed = -0.5f * JERK_effective * sum_time * sum_time + 2 * JERK_effective * T * sum_time 
-										- JERK_effective * T * T + start_pulse;
+        // æ ¹æ®æ—¶é—´æ®µè®¡ç®—å½“å‰é€Ÿåº¦
+        if (sum_time < T) 
+            // åŠ é€Ÿæ®µï¼šv = v0 + 0.5 * J_eff * t^2
+            current_speed = start_pulse + JERK_effective * 0.5f * (sum_time * sum_time);
+        else 
+            // å‡é€Ÿæ®µï¼šv = -0.5*J_eff*t^2 + 2*J_eff*T*t - J_eff*T^2 + v0
+            current_speed = -0.5f * JERK_effective * sum_time * sum_time + 
+                            2 * JERK_effective * T * sum_time - 
+                            JERK_effective * T * T + start_pulse;
 
-		// ÏŞÖÆ×îĞ¡ËÙ¶È
-		if (current_speed < MIN_SPEED) 
-				current_speed = MIN_SPEED;
+        // é™åˆ¶æœ€å°é€Ÿåº¦
+        if (current_speed < MIN_SPEED) 
+            current_speed = MIN_SPEED;
 
-		// ¼ÆËãµ±Ç°ARR²¢´æ´¢
-		uint16_t arr_value = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 1, TIM_COUNT_MAX);
-		motor->speed_calc.toggle_pulse[pulse_count++] = arr_value;
+        // è®¡ç®—å½“å‰ARRå€¼å¹¶å­˜å‚¨
+        uint16_t arr_value = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 1, TIM_COUNT_MAX);
+        motor->speed_calc.toggle_pulse[pulse_count++] = arr_value;
 
-		// ÖÕÖ¹Ìõ¼ş£ºËÙ¶È½Ó½üÄ¿±ê£¨Îó²î<0.1rpm£©ÇÒÒÑ¹ı¼Ó¼ÓËÙ½×¶Î
-		float current_rpm = ARR_TO_RPM(arr_value, psc);
-		if (fabs(current_rpm - target_rpm) < 0.1f && sum_time >= T)
-		{
-				// ²¹³ä×îºóÒ»²½µ½Ä¿±êËÙ¶È
-			target_arr = roundf(IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 1, TIM_COUNT_MAX));
-			motor->speed_calc.toggle_pulse[pulse_count++] = target_arr + 13;
-			break;
-		}
-	}
-	if (sum_time >= 2.0f * T) 
-	{
-		// ²¹³ä×îºóÒ»²½µ½Ä¿±êËÙ¶È
-		target_arr = roundf(IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 1, TIM_COUNT_MAX));
-		motor->speed_calc.toggle_pulse[pulse_count++] = target_arr + 13;
-	}
-	// ¸üĞÂµç»ú×´Ì¬²¢Æô¶¯DMA
-	motor->sum_time_all = sum_time;
-	motor->speed_calc.accel_pulse = pulse_count;
-	motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, pulse_count, DMA_MODE_NORMAL);
+        // å¦‚æœé€Ÿåº¦æ¥è¿‘ç›®æ ‡ï¼ˆè¯¯å·®<0.1rpmï¼‰ä¸”å·²è¿‡åŠ é€Ÿæ®µï¼Œåˆ™ç»“æŸ
+        float current_rpm = ARR_TO_RPM(arr_value, psc);
+        if (fabs(current_rpm - target_rpm) < 0.1f && sum_time >= T)
+        {
+            // æ·»åŠ æœ€åä¸€ä¸ªç›®æ ‡é€Ÿåº¦çš„ARRå€¼
+            target_arr = roundf(IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 1, TIM_COUNT_MAX));
+            motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
+            break;
+        }
+    }
+    
+    if (sum_time >= 2.0f * T) 
+    {
+        // æ·»åŠ æœ€åä¸€ä¸ªç›®æ ‡é€Ÿåº¦çš„ARRå€¼
+        target_arr = roundf(IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 1, TIM_COUNT_MAX));
+        motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
+    }
+    
+    // æ›´æ–°ç”µæœºçŠ¶æ€å¹¶å¯åŠ¨DMA
+    motor->sum_time_all = sum_time;
+    motor->speed_calc.accel_pulse = pulse_count;
+    motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, pulse_count, DMA_MODE_NORMAL);
 }
 
 int ARR_1 = 0;
 float high_speed_minor_adjust[SUBDIVIDE_RATIO] = {0};
 int32_t actual_arr[SUBDIVIDE_RATIO] = {0};
-// µç»ú¸ß×ªËÙÊ±Èí¼şÏ¸·Ö
+
+// ç”µæœºé«˜é€Ÿå¾®è°ƒç®—æ³•
 static void motor_high_speed_minor_adjust(motorindex_enum motor_index, uint16_t target_speed)
 {
-		Motor* motor = &Motor_list[motor_index];
-	
-		motor->target_speed.target_speed = target_speed;
-    float target_rpm = _01RPM_TO_RPM(target_speed);  // ×ª»»ÎªÊµ¼ÊRPM£¨0.1rpm¾«¶ÈÊäÈë£©
+    Motor* motor = &Motor_list[motor_index];
+    motor->target_speed.target_speed = target_speed;
+    float target_rpm = _01RPM_TO_RPM(target_speed); // è½¬æ¢ä¸ºå®é™…RPMï¼ˆ0.1rpmåˆ†è¾¨ç‡ï¼‰
     uint32_t psc = motor->speed_calc.psc;
-		
-		memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse));	// Çå¿Õ´æ´¢ARRµÄÊı×é
-	
-    // 1. ¼ÆËãÄ¿±êARR¼°Îó²î
-    float target_arr = RPM_TO_ARR_FLOAT(target_rpm, psc);  // ÀíÂÛARR£¨¸¡µã£©
-    int32_t integer_arr = (int32_t)round(target_arr);    // È¡ÕûºóµÄARR
-    float arr_error = target_arr - integer_arr;           // ARRÎó²î
+    
+    memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse)); // æ¸…é™¤ARRå€¼æ•°ç»„
 
-    // 2. ·ÖÅäÎó²îµ½7¸ö¼ä¸ô
+    // 1. è®¡ç®—ç›®æ ‡ARRçš„æµ®ç‚¹å€¼
+    float target_arr_float = RPM_TO_ARR_FLOAT(target_rpm, psc); // ç›®æ ‡ARRï¼ˆæµ®ç‚¹ï¼‰
+    int32_t integer_arr = (int32_t)round(target_arr_float); // å–æ•´ARR
+    float arr_error = target_arr_float - integer_arr; // ARRè¯¯å·®
+
+    // 2. å°†è¯¯å·®åˆ†é…åˆ°7ä¸ªç»†åˆ†å‘¨æœŸä¸­
     int32_t total_adjust = (int32_t)round(arr_error * SUBDIVIDE_RATIO);
     total_adjust = fmax(-(int32_t)SUBDIVIDE_RATIO, fmin((int32_t)SUBDIVIDE_RATIO, total_adjust));
 
-
     for (uint8_t i = 0; i < SUBDIVIDE_RATIO; i++)
-        actual_arr[i] = integer_arr;  // ³õÊ¼»¯ÎªÕûÊıARR
+        actual_arr[i] = integer_arr; // åˆå§‹åŒ–ä¸ºæ•´å‹ARR
 
-    // °´×Üµ÷ÕûÁ¿·ÖÅä¡À1
+    // å¾ªç¯è°ƒæ•´æ¯ä¸ªç»†åˆ†å‘¨æœŸ
     uint8_t index = 0;
     while (index < abs(total_adjust)) 
-		{
-			if (total_adjust > 0) 
-					actual_arr[index] += 1;
-			else
-					actual_arr[index] -= 1;
-			index++;
+    {
+        if (total_adjust > 0) 
+            actual_arr[index] += 1;
+        else
+            actual_arr[index] -= 1;
+        index++;
     }
 
-    // 3. ÏŞÖÆARR·¶Î§²¢´æ´¢
+    // 3. é™åˆ¶ARRèŒƒå›´å¹¶å­˜å‚¨
     for (uint8_t i = 0; i < SUBDIVIDE_RATIO; i++) 
-		{
-			// ARRÏŞÖÆÔÚ100~TIM_COUNT_MAX£¨±ÜÃâ¹ıµÍµ¼ÖÂÆµÂÊ¹ı¸ß£©
-			actual_arr[i] = IFR_CLAMP(actual_arr[i], 100, TIM_COUNT_MAX);
-			motor->speed_calc.toggle_pulse[i] = (uint16_t)actual_arr[i];
+    {
+        // ARRé™åˆ¶åœ¨100~TIM_COUNT_MAXï¼Œé˜²æ­¢é¢‘ç‡è¿‡ä½æˆ–è¿‡é«˜
+        actual_arr[i] = IFR_CLAMP(actual_arr[i], 100, TIM_COUNT_MAX);
+        motor->speed_calc.toggle_pulse[i] = (uint16_t)actual_arr[i];
     }
 
-    // 4. ¼ÆËãÊµ¼ÊÆ½¾ùËÙ¶È²¢¸üĞÂ
-		float actual_avg_rpm = 0.0f;
+    // 4. è®¡ç®—å®é™…å¹³å‡é€Ÿåº¦å¹¶æ›´æ–°
+    float actual_avg_rpm = 0.0f;
     for (uint8_t i = 0; i < SUBDIVIDE_RATIO; i++) 
-		{
-			high_speed_minor_adjust[i] = ARR_TO_RPM(motor->speed_calc.toggle_pulse[i], psc);
-      actual_avg_rpm += ARR_TO_RPM(motor->speed_calc.toggle_pulse[i], psc);
-		}
+    {
+        high_speed_minor_adjust[i] = ARR_TO_RPM(motor->speed_calc.toggle_pulse[i], psc);
+        actual_avg_rpm += ARR_TO_RPM(motor->speed_calc.toggle_pulse[i], psc);
+    }
 
     actual_avg_rpm /= SUBDIVIDE_RATIO;
     motor->current_speed = actual_avg_rpm;
-		motor->speed_calc.accel_pulse = SUBDIVIDE_RATIO;
-		ARR_1 = motor->motor_params.timer->Instance->ARR;
-    // 5. Æô¶¯Ñ­»·DMA´«Êä
-    motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, motor->speed_calc.accel_pulse, DMA_MODE_CIRCULAR);
-
+    motor->speed_calc.accel_pulse = SUBDIVIDE_RATIO;
+    ARR_1 = motor->motor_params.timer->Instance->ARR;
+    
+    // 5. å¯åŠ¨å¾ªç¯DMAä¼ è¾“
+    motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, 
+                      motor->speed_calc.accel_pulse, DMA_MODE_CIRCULAR);
 }
 
-// µ¥¸öµç»ú¶ÔÓ¦µÄ¶¨Ê±Æ÷²ÎÊı³õÊ¼»¯
+// ç”µæœºå®šæ—¶å™¨é…ç½®è®¾ç½®
 static void motor_tim_config_set(motorindex_enum motor_index)
 {
-	HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
-		Motor* motor = &Motor_list[motor_index]; // ¼ò»¯Ö¸Õë²Ù×÷£¬Ìá¸ß¿É¶ÁĞÔ
+    HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
+    Motor* motor = &Motor_list[motor_index]; // è·å–å½“å‰ç”µæœºå¯¹è±¡
     TIM_HandleTypeDef* htim = motor->motor_params.timer;
     uint32_t channel = motor->motor_params.channel;
 
-    // 1. °²È«ÖÕÖ¹¶¨Ê±Æ÷ÓëDMA£¨±ÜÃâÅäÖÃÊ±²¨ĞÎÒì³££©
-		__HAL_TIM_DISABLE(htim); // ¹Ø±Õ¶¨Ê±Æ÷ºËĞÄ£¬È·±£PSC/ARRĞŞ¸ÄÁ¢¼´ÉúĞ§
-    HAL_TIM_OC_Stop(htim, channel); // Í£Ö¹OCÊä³ö
-    if (htim->hdma[TIM_DMA_ID_UPDATE] != NULL) // Èô´æÔÚDMA£¬ÏÈÖÕÖ¹²¢½ûÓÃ
+    // 1. åœæ­¢å®šæ—¶å™¨å’ŒDMAï¼Œç¡®ä¿é…ç½®å‰å®šæ—¶å™¨å®Œå…¨åœæ­¢
+    __HAL_TIM_DISABLE(htim); // ç¦ç”¨å®šæ—¶å™¨ï¼Œç¡®ä¿PSC/ARRä¿®æ”¹ç”Ÿæ•ˆ
+    HAL_TIM_OC_Stop(htim, channel); // åœæ­¢OCè¾“å‡º
+    
+    if (htim->hdma[TIM_DMA_ID_UPDATE] != NULL) // å¦‚æœå­˜åœ¨DMAï¼Œåˆ™ä¸­æ­¢
     {
         HAL_DMA_Abort(htim->hdma[TIM_DMA_ID_UPDATE]);
-        __HAL_TIM_DISABLE_DMA(htim, TIM_DMA_UPDATE); // ½ûÓÃ¶¨Ê±Æ÷DMAÇëÇó
+        __HAL_TIM_DISABLE_DMA(htim, TIM_DMA_UPDATE); // ç¦ç”¨å®šæ—¶å™¨DMAè¯·æ±‚
     }
 
-    // 2. ÕıÈ·Ñ¡ÔñÔ¤·ÖÆµ£¨PSC£©
+    // 2. æ ¹æ®é€Ÿåº¦çŠ¶æ€é€‰æ‹©é¢„åˆ†é¢‘å™¨ï¼ˆPSCï¼‰
     if (motor->motor_speed_state == MOTOR_LOW_SPEED_STATE)
     {
-        motor->speed_calc.psc = TIM_LOW_SPEED_PSC; // µÍËÙ/Í£Ö¹£ºÓÃ´óPSC
+        motor->speed_calc.psc = TIM_LOW_SPEED_PSC; // ä½é€Ÿ/åœæ­¢ï¼šè¾ƒå¤§PSC
     }
-    else if (motor->motor_speed_state == MOTOR_HIGH_SPEED_STATE || motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST || motor->motor_speed_state == MOTOR_STOP)
+    else if (motor->motor_speed_state == MOTOR_HIGH_SPEED_STATE || 
+             motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST || 
+             motor->motor_speed_state == MOTOR_STOP)
     {
-        motor->speed_calc.psc = TIM_HIGH_SPEED_PSC; // ¸ßËÙ/Ï¸·Ö£ºÓÃĞ¡PSC
+        motor->speed_calc.psc = TIM_HIGH_SPEED_PSC; // é«˜é€Ÿ/å¾®è°ƒï¼šè¾ƒå°PSC
     }
 
-    // 3. ÅäÖÃ¶¨Ê±Æ÷»ù´¡²ÎÊı£¨¾ö¶¨¼ÆÊıÆµÂÊºÍÖÜÆÚ£©
-    htim->Init.Prescaler = motor->speed_calc.psc; // Ó¦ÓÃÑ¡ÔñµÄÔ¤·ÖÆµmotor->speed_calc.psc
-    htim->Init.CounterMode = TIM_COUNTERMODE_UP; // ÏòÉÏ¼ÆÊı£¨Éú³É¹Ì¶¨ÖÜÆÚ£©
-    htim->Init.Period = TIM_COUNT_MAX; // ³õÊ¼ARRÉèÎª×î´óÖµ£¨±ÜÃâ¼ÆÊıÒç³ö£¬ºóĞøDMA¶¯Ì¬¸üĞÂ£©
-    htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1; // Ê±ÖÓ²»·ÖÆµ£¬±£Ö¤¼ÆÊı¾«¶È
-    htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE; // ¿ªÆôARRÔ¤×°ÔØ
-    HAL_TIM_Base_Init(htim); // ³õÊ¼»¯¶¨Ê±Æ÷»ù´¡Ä£Ê½£¨±ØĞëÔÚOCÅäÖÃÇ°£©
+    // 3. é…ç½®å®šæ—¶å™¨åŸºæœ¬å‚æ•°
+    htim->Init.Prescaler = motor->speed_calc.psc; // ä½¿ç”¨é€‰æ‹©çš„é¢„åˆ†é¢‘å™¨
+    htim->Init.CounterMode = TIM_COUNTERMODE_UP; // å‘ä¸Šè®¡æ•°æ¨¡å¼
+    htim->Init.Period = TIM_COUNT_MAX; // åˆå§‹ARRè®¾ä¸ºæœ€å¤§å€¼ï¼Œé˜²æ­¢è®¡æ•°æº¢å‡º
+    htim->Init.ClockDivision = TIM_CLOCKDIVISION_DIV1; // æ—¶é’Ÿåˆ†é¢‘ä¸º1
+    htim->Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE; // è‡ªåŠ¨é‡è£…è½½é¢„è£…è½½ç¦ç”¨
+    HAL_TIM_Base_Init(htim); // åˆå§‹åŒ–å®šæ—¶å™¨åŸºç¡€æ¨¡å¼
 
-    // 4. ÅäÖÃPWMÄ£Ê½1£¨ºËĞÄÊä³öÂß¼­£©
+    // 4. é…ç½®PWMæ¨¡å¼1ï¼Œç¡®ä¿è¾“å‡ºæ­£ç¡®
     TIM_OC_InitTypeDef sConfigOC = {0};
-    sConfigOC.OCMode = TIM_OCMODE_PWM1; 	// CNT < CCR£º¸ßµçÆ½£»CNT >= CCR£ºµÍµçÆ½
-		if (motor->speed_calc.psc == TIM_HIGH_SPEED_PSC)
-			sConfigOC.Pulse = 1000; 								// ³õÊ¼Õ¼¿Õ±È£¨±ÜÃâÂö³å¹ıÕ­µ¼ÖÂÇı¶¯Æ÷ÎóÅĞ£©
-		else 
-			sConfigOC.Pulse = 150; 								// ³õÊ¼Õ¼¿Õ±È£¨±ÜÃâÂö³å¹ıÕ­µ¼ÖÂÇı¶¯Æ÷ÎóÅĞ£©
-		
-    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH; // ¸ß¼«ĞÔ£¨ÓĞĞ§µçÆ½Îª¸ß£¬ÊÊÅä¶àÊıÇı¶¯Æ÷£©
-    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE; 	// ¹Ø±Õ¿ìËÙÄ£Ê½£¨²¨ĞÎÎÈ¶¨ÓÅÏÈ£¬±ÜÃâÃ«´Ì£©
-    HAL_TIM_OC_ConfigChannel(htim, &sConfigOC, channel); // Ó¦ÓÃOCÍ¨µÀÅäÖÃ
+    sConfigOC.OCMode = TIM_OCMODE_PWM1; // CNT < CCRæ—¶é«˜ç”µå¹³ï¼ŒCNT >= CCRæ—¶ä½ç”µå¹³
+    
+    if (motor->speed_calc.psc == TIM_HIGH_SPEED_PSC)
+        sConfigOC.Pulse = 1000; // åˆå§‹å ç©ºæ¯”ï¼Œç¡®ä¿è„‰å†²å®½åº¦åˆé€‚
+    else 
+        sConfigOC.Pulse = 150; // åˆå§‹å ç©ºæ¯”ï¼Œç¡®ä¿è„‰å†²å®½åº¦åˆé€‚
+        
+    sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH; // è¾“å‡ºææ€§é«˜ï¼Œæœ‰æ•ˆç”µå¹³ä¸ºé«˜
+    sConfigOC.OCFastMode = TIM_OCFAST_DISABLE; // ç¦ç”¨å¿«é€Ÿæ¨¡å¼
+    HAL_TIM_OC_ConfigChannel(htim, &sConfigOC, channel); // é…ç½®OCé€šé“
 
-    // 5. ³õÊ¼»¯¼ÆÊıÆ÷£¨±ÜÃâ²ĞÁô¼ÆÊıµ¼ÖÂÊ×´ÎÂö³åÒì³££©
-    __HAL_TIM_SET_COUNTER(htim, 0); // ¼ÆÊıÆ÷ÇåÁã
-
+    // 5. é‡ç½®è®¡æ•°å™¨ï¼Œç¡®ä¿ä»0å¼€å§‹è®¡æ•°
+    __HAL_TIM_SET_COUNTER(htim, 0); // è®¡æ•°å™¨æ¸…é›¶
 }
 
 int num_2 = 0;
-// Í³Ò»µÄDMA·¢ËÍº¯Êı
-static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, uint32_t arr_count, dma_mode_enum mode)
-{
-	HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
-	num_2++;
-	if (motor_index >= MOTOR_COUNT || arr_values == NULL || arr_count == 0)
-			return HAL_ERROR;
-	
-	Motor* motor = &Motor_list[motor_index];
-	TIM_HandleTypeDef* htim = motor->motor_params.timer;
-	DMA_HandleTypeDef* hdma = htim->hdma[TIM_DMA_ID_UPDATE];
-	
-	if (hdma == NULL)
-			return HAL_ERROR;
-    
-	// Í£Ö¹µ±Ç°´«Êä
-	HAL_TIM_OC_Stop(htim, motor->motor_params.channel);
-	HAL_DMA_Abort(hdma);
-	__HAL_TIM_DISABLE_DMA(htim, TIM_DMA_UPDATE);
-    
-  // ÅäÖÃDMAÄ£Ê½
-	hdma->Init.Mode = (mode == DMA_MODE_CIRCULAR) ? DMA_CIRCULAR : DMA_NORMAL; // ÈôÎªÑ­»·Ä£Ê½£¬ÔòÉèÖÃÎªÑ­»·´«Êä£¬·ñÔòÎªµ¥´Î´«Êä
-	hdma->Init.PeriphInc = DMA_PINC_DISABLE;
-	hdma->Init.MemInc = DMA_MINC_ENABLE;
-	hdma->Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
-	hdma->Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
-	hdma->Init.Direction = DMA_MEMORY_TO_PERIPH;
 
-	HAL_DMA_RegisterCallback(hdma, HAL_DMA_XFER_CPLT_CB_ID, motor_dma_transfer_complete_callback);	// ×¢²áDMA´«ÊäÍê³É»Øµ÷º¯Êı
-	HAL_DMA_RegisterCallback(hdma, HAL_DMA_XFER_ERROR_CB_ID, motor_dma_error_callback);	// ×¢²áDMA´«Êä´íÎó»Øµ÷º¯Êı
-	motor->motor_params.timer->Instance->CNT = 0;		// ½«¶¨Ê±Æ÷¼ÆÊıÆ÷ÇåÁã
-	// ÖØĞÂ³õÊ¼»¯DMA
-	if (HAL_DMA_Init(hdma) != HAL_OK)
-			return HAL_ERROR;
-	
-	// ÆôÓÃDMAºÍ¶¨Ê±Æ÷
-	__HAL_TIM_ENABLE_DMA(htim, TIM_DMA_UPDATE);
-	HAL_TIM_Base_Start(htim);
-	
-	// Æô¶¯DMA´«Êä
-	if (HAL_DMA_Start_IT(hdma, (uint32_t)arr_values, (uint32_t)&htim->Instance->ARR, arr_count) != HAL_OK)
-			return HAL_ERROR;
-	
-	if (HAL_TIM_OC_Start(htim, motor->motor_params.channel) != HAL_OK)
-			return HAL_ERROR;
-	
-	
-	// ¸üĞÂ¿ØÖÆ×´Ì¬
-	motor->dma_prame.dma_mode = mode;
-	motor->dma_prame.dma_state = DMA_STATE_BUSY;
-	
-	return HAL_OK;
+// DMAä¼ è¾“å‡½æ•°
+static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, 
+                                          uint32_t arr_count, dma_mode_enum mode)
+{
+    HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
+    num_2++;
+    
+    if (motor_index >= MOTOR_COUNT || arr_values == NULL || arr_count == 0)
+        return HAL_ERROR;
+    
+    Motor* motor = &Motor_list[motor_index];
+    TIM_HandleTypeDef* htim = motor->motor_params.timer;
+    DMA_HandleTypeDef* hdma = htim->hdma[TIM_DMA_ID_UPDATE];
+    
+    if (hdma == NULL)
+        return HAL_ERROR;
+    
+    // åœæ­¢å½“å‰ä¼ è¾“
+    HAL_TIM_OC_Stop(htim, motor->motor_params.channel);
+    HAL_DMA_Abort(hdma);
+    __HAL_TIM_DISABLE_DMA(htim, TIM_DMA_UPDATE);
+    
+    // é…ç½®DMAæ¨¡å¼
+    hdma->Init.Mode = (mode == DMA_MODE_CIRCULAR) ? DMA_CIRCULAR : DMA_NORMAL; // å¾ªç¯æ¨¡å¼æˆ–æ­£å¸¸æ¨¡å¼
+    hdma->Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma->Init.MemInc = DMA_MINC_ENABLE;
+    hdma->Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma->Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma->Init.Direction = DMA_MEMORY_TO_PERIPH;
+
+    HAL_DMA_RegisterCallback(hdma, HAL_DMA_XFER_CPLT_CB_ID, motor_dma_transfer_complete_callback); // æ³¨å†ŒDMAä¼ è¾“å®Œæˆå›è°ƒ
+    HAL_DMA_RegisterCallback(hdma, HAL_DMA_XFER_ERROR_CB_ID, motor_dma_error_callback); // æ³¨å†ŒDMAä¼ è¾“é”™è¯¯å›è°ƒ
+    motor->motor_params.timer->Instance->CNT = 0; // å®šæ—¶å™¨è®¡æ•°å™¨æ¸…é›¶
+    
+    // åˆå§‹åŒ–DMA
+    if (HAL_DMA_Init(hdma) != HAL_OK)
+        return HAL_ERROR;
+    
+    // å¯ç”¨DMAå’Œå®šæ—¶å™¨
+    __HAL_TIM_ENABLE_DMA(htim, TIM_DMA_UPDATE);
+    HAL_TIM_Base_Start(htim);
+    
+    // å¯åŠ¨DMAä¼ è¾“
+    if (HAL_DMA_Start_IT(hdma, (uint32_t)arr_values, (uint32_t)&htim->Instance->ARR, arr_count) != HAL_OK)
+        return HAL_ERROR;
+    
+    if (HAL_TIM_OC_Start(htim, motor->motor_params.channel) != HAL_OK)
+        return HAL_ERROR;
+    
+    // æ›´æ–°æ§åˆ¶çŠ¶æ€
+    motor->dma_prame.dma_mode = mode;
+    motor->dma_prame.dma_state = DMA_STATE_BUSY;
+    
+    return HAL_OK;
 }
+
 int num_1 = 0;
-// DMA´«ÊäÍê³É»Øµ÷º¯Êı
+
+// DMAä¼ è¾“å®Œæˆå›è°ƒå‡½æ•°
 static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma)
 {
-	num_1++;
-	// ²éÕÒÊÇÄÄ¸öµç»úµÄDMAÍê³É
-	for (int i = 0; i < MOTOR_COUNT; i++) 
-	{
-		Motor* motor = &Motor_list[i];
-		if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
-		{
-			// Èç¹ûÊÇJerk¼ÓËÙµ¥´ÎÄ£Ê½Íê³É£¬ĞèÒªÌØÊâ´¦Àí
-			if (motor->dma_prame.dma_mode == DMA_MODE_NORMAL) 
-			{
-				motor->dma_prame.dma_state = DMA_STATE_COMPLETE;
-				HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
-				// Jerk¼ÓËÙÍê³É£¬µç»ú½øÈëÔÈËÙ×´Ì¬
-				motor->state = MOTOR_AVESPEED;
-				motor->current_speed = ARR_TO_RPM(motor->motor_params.timer->Instance->ARR, motor->motor_params.timer->Instance->PSC);	// Í¨¹ıµ±Ç°µÄARR·´ÍÆ³öµ±Ç°ËÙ¶È
-			}
-			break;
-		}
-	}
+    num_1++;
+    // æŸ¥æ‰¾æ˜¯å“ªä¸ªç”µæœºçš„DMAä¼ è¾“å®Œæˆ
+    for (int i = 0; i < MOTOR_COUNT; i++) 
+    {
+        Motor* motor = &Motor_list[i];
+        if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
+        {
+            // å¦‚æœæ˜¯JerkåŠ é€Ÿçš„æ­£å¸¸æ¨¡å¼å®Œæˆï¼Œåˆ™ç”µæœºè¿›å…¥åŒ€é€ŸçŠ¶æ€
+            if (motor->dma_prame.dma_mode == DMA_MODE_NORMAL) 
+            {
+                motor->dma_prame.dma_state = DMA_STATE_COMPLETE;
+                HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
+                // JerkåŠ é€Ÿå®Œæˆï¼Œç”µæœºè¿›å…¥åŒ€é€ŸçŠ¶æ€
+                motor->state = MOTOR_AVESPEED;
+                motor->current_speed = ARR_TO_RPM(motor->motor_params.timer->Instance->ARR, 
+                                                 motor->motor_params.timer->Instance->PSC); // é€šè¿‡å½“å‰ARRå€¼è®¡ç®—å½“å‰é€Ÿåº¦
+            }
+            break;
+        }
+    }
 }
+
 int flag_error = 0;
-// DMA´«Êä´íÎó»Øµ÷º¯Êı
+
+// DMAä¼ è¾“é”™è¯¯å›è°ƒå‡½æ•°
 static void motor_dma_error_callback(DMA_HandleTypeDef *hdma)
 {
-	flag_error = 1;
-	for (motorindex_enum i = 0; i < MOTOR_COUNT; i++) 
-	{
-		Motor* motor = &Motor_list[i];
-		if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
-		{
-			motor_tim_config_set(i);	// ÖØĞÂÅäÖÃ¶¨Ê±Æ÷
-		}
-	}
+    flag_error = 1;
+    for (motorindex_enum i = 0; i < MOTOR_COUNT; i++) 
+    {
+        Motor* motor = &Motor_list[i];
+        if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
+        {
+            motor_tim_config_set(i); // é‡æ–°é…ç½®å®šæ—¶å™¨
+        }
+    }
 }

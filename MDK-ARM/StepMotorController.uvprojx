@@ -586,6 +586,11 @@
               <FileType>1</FileType>
               <FilePath>..\IFR\ifr_crc.c</FilePath>
             </File>
+            <File>
+              <FileName>ifr_modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\IFR\ifr_modbus.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

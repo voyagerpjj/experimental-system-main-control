@@ -27,6 +27,7 @@ extern "C" {
 
 #include "usart.h"
 
+
 // 接收缓冲区大小
 #define USART_RX_RING_BUFFER_SIZE 128
 
@@ -42,11 +43,11 @@ typedef struct
     uint32_t _updata_systick;                            // 最后更新时间戳
     uint16_t Data_Length;                                // 接收数据长度
     HAL_StatusTypeDef UsartRxState;                      // 串口接收状态
-} IFR_USART_ClassDef;
+} ifr_usart_typedef;
 
 // 串口初始化
-void IFR_USART_Init(IFR_USART_ClassDef *ifr_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)( uint8_t *pData, uint8_t len));
-
+void IFR_USART_Init(ifr_usart_typedef *ifr_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)( uint8_t *pData, uint8_t len));
+uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart);
 #endif  // USE_HAL_UART_REGISTER_CALLBACKS && USE_HAL_USART_REGISTER_CALLBACKS
 #endif  // HAL_UART_MODULE_ENABLED
 
