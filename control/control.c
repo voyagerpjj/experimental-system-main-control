@@ -37,6 +37,7 @@ void control_runing(void)
 			case TRANSMIT_DATA:	// 向上位机发送当前流量传感器和液位变送器数据
 				usart_ttl_transmit();
 				system_state.motor_control_mode = SET_MOTOR_SPEED;
+				break;
 			case SET_MOTOR_SPEED:	// 电机控制
 				for (int i = 0; i < MOTOR_COUNT; i++)
 				{
@@ -46,8 +47,13 @@ void control_runing(void)
 			default:
 				break;
 		}
-		
-		
+	}
+	else 
+	{
+		for (int i = 0; i < MOTOR_COUNT; i++)
+		{
+			motor_control(i, 0);
+		}
 	}
 }
 
@@ -67,15 +73,24 @@ void communicat_runing()
 	if (rx_ttl_message_temp.rx_message_state == CONFIGURATION_MSG)
 	{
 		system_state.mode = STOP;
-		if (rx_ttl_message_temp.configuration_data.rx_modbus_message == DEVICE_POWER_MSG)
+		if (rx_ttl_message_temp.configuration_data.rx_modbus_message == DEVICE_POWER_MSG)	// 如果是电源配置指令
 		{
 			for (int i = 0; i < 4; i++)
 			{
 				liquid_level_transmitter_typedef liquid_level_transmitter_temp = get_liquid_level_transmitter(i);
+				GPIO_TypeDef* port = NULL;
+				uint16_t pin = 0;
+				// 匹配对应引脚
+				switch(i) {
+						case 0: port = TRAN1_EN_GPIO_Port; pin = TRAN1_EN_Pin; break;
+						case 1: port = TRAN2_EN_GPIO_Port; pin = TRAN2_EN_Pin; break;
+						case 2: port = TRAN3_EN_GPIO_Port; pin = TRAN3_EN_Pin; break;
+						case 3: port = TRAN4_EN_GPIO_Port; pin = TRAN4_EN_Pin; break;
+				}
 				if (liquid_level_transmitter_temp.liquid_level_transmitter_power == NO)
-					HAL_GPIO_WritePin(TRAN1_EN_GPIO_Port, TRAN1_EN_Pin, GPIO_PIN_RESET);
+						HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
 				else 
-					HAL_GPIO_WritePin(TRAN1_EN_GPIO_Port, TRAN1_EN_Pin, GPIO_PIN_SET);
+						HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
 			}
 		}
 	}

@@ -379,7 +379,7 @@ static void motor_tim_config_set(motorindex_enum motor_index)
     {
         motor->speed_calc.psc = TIM_HIGH_SPEED_PSC; // 高速/微调：较小PSC
     }
-
+		HAL_TIM_Base_DeInit(htim); // 反初始化
     // 3. 配置定时器基本参数
     htim->Init.Prescaler = motor->speed_calc.psc; // 使用选择的预分频器
     htim->Init.CounterMode = TIM_COUNTERMODE_UP; // 向上计数模式
@@ -468,26 +468,26 @@ int num_1 = 0;
 // DMA传输完成回调函数
 static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma)
 {
-    num_1++;
-    // 查找是哪个电机的DMA传输完成
-    for (int i = 0; i < MOTOR_COUNT; i++) 
-    {
-        Motor* motor = &Motor_list[i];
-        if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
-        {
-            // 如果是Jerk加速的正常模式完成，则电机进入匀速状态
-            if (motor->dma_prame.dma_mode == DMA_MODE_NORMAL) 
-            {
-                motor->dma_prame.dma_state = DMA_STATE_COMPLETE;
-                HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
-                // Jerk加速完成，电机进入匀速状态
-                motor->state = MOTOR_AVESPEED;
-                motor->current_speed = ARR_TO_RPM(motor->motor_params.timer->Instance->ARR, 
-                                                 motor->motor_params.timer->Instance->PSC); // 通过当前ARR值计算当前速度
-            }
-            break;
-        }
-    }
+	num_1++;
+	// 查找是哪个电机的DMA传输完成
+	for (int i = 0; i < MOTOR_COUNT; i++) 
+	{
+		Motor* motor = &Motor_list[i];
+		if (motor->motor_params.timer->hdma[TIM_DMA_ID_UPDATE] == hdma) 
+		{
+			// 如果是Jerk加速的正常模式完成，则电机进入匀速状态
+			if (motor->dma_prame.dma_mode == DMA_MODE_NORMAL) 
+			{
+					motor->dma_prame.dma_state = DMA_STATE_COMPLETE;
+					HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
+					// Jerk加速完成，电机进入匀速状态
+					motor->state = MOTOR_AVESPEED;
+					motor->current_speed = ARR_TO_RPM(motor->motor_params.timer->Instance->ARR, 
+																					 motor->motor_params.timer->Instance->PSC); // 通过当前ARR值计算当前速度
+			}
+			break;
+		}
+	}
 }
 
 int flag_error = 0;

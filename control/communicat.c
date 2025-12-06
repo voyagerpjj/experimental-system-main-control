@@ -100,16 +100,18 @@ void usart_ttl_transmit(void)
 		memcpy(&tx_ttl_message.data[i * 4], liquid_level_transmitter[i].receive_data, 4);
 	}
 	memcpy(&tx_ttl_message.data[16], liquid_flow_collection.receive_data, 8);
-	HAL_UART_Transmit_DMA(&huart4, (uint8_t *)&tx_ttl_message, sizeof(tx_ttl_message));
+	if (huart4.hdmatx->State == HAL_DMA_STATE_READY)
+		HAL_UART_Transmit_DMA(&huart4, (uint8_t *)&tx_ttl_message, sizeof(tx_ttl_message));
 }
-uint8_t current_slave_idx = 1;
-uint8_t slave_addr_list[5] = {0};
-uint8_t slave_count = 0;
+
+static uint8_t current_slave_idx = 0;
+static uint8_t slave_addr_list[5] = {0};
+static uint8_t slave_count = 0;
 void usart_485_transmit_init(void)
 {
 	slave_count = 0;
 	memset(slave_addr_list, 0, 5);
-	current_slave_idx = 1;
+	current_slave_idx = 0;
 	// 检测是否需要读取
 	for (int i = 0; i < 4; i++)
 	{
@@ -118,22 +120,21 @@ void usart_485_transmit_init(void)
 			slave_addr_list[slave_count] = liquid_level_transmitter[i].ID;
 			slave_count++;
 		}
-		else 
-			memset(liquid_level_transmitter[i].receive_data, 0, 4);
+		memset(liquid_level_transmitter[i].receive_data, 0, 4);	// 将数据清零
 	}
 	if (liquid_flow_collection.liquid_level_transmitter_state == YES)
 	{
 		slave_addr_list[slave_count] = liquid_flow_collection.ID;
 		slave_count++;
-	}
-	else 
-		memset(liquid_flow_collection.receive_data, 0, 8);	
+	} 
+	memset(liquid_flow_collection.receive_data, 0, 8);	// 将数据清零
 }
 
 HAL_StatusTypeDef usart_485_transmit_all(void)
 {
- static uint8_t current_slave_idx = 0;
- modbus_error_t err = modbus_master_process(&usart_485_modbus);
+	if (slave_count == 0)	// 无设备需要轮询，直接返回OK
+		return HAL_OK;
+	modbus_error_t err = modbus_master_process(&usart_485_modbus);	// 更新当前modbus主机的状态
 	
 	// 超时处理
 	if (err == MODBUS_ERROR_TIMEOUT) 
@@ -149,8 +150,11 @@ HAL_StatusTypeDef usart_485_transmit_all(void)
 			liquid_flow_collection.state_normal = HAL_ERROR;
 		}
 		modbus_master_reset(&usart_485_modbus);
-		if (current_slave_idx == slave_count)	// 所有需要的轮询已经完成
+		if (current_slave_idx == slave_count - 1)	// 所有需要的轮询已经完成
+		{
+			current_slave_idx = 0;
 			return HAL_OK;
+		}
 		current_slave_idx = (current_slave_idx + 1) % slave_count;
 	}
 	
@@ -162,25 +166,28 @@ HAL_StatusTypeDef usart_485_transmit_all(void)
 		else 
 			liquid_flow_collection.state_normal = HAL_OK;
 		modbus_master_reset(&usart_485_modbus);
-		if (current_slave_idx == slave_count)	// 所有需要的轮询已经完成
+		if (current_slave_idx == slave_count - 1)	// 所有需要的轮询已经完成
+		{
+			current_slave_idx = 0;
 			return HAL_OK;
+		}
 		current_slave_idx = (current_slave_idx + 1) % slave_count;
 	}
 	
 	// 主站空闲，发送请求
 	if (!modbus_master_is_busy(&usart_485_modbus)) 
 	{
-			uint8_t slave_addr = slave_addr_list[current_slave_idx];
-			if (slave_addr <= 0x04)
-			{
-				liquid_level_transmitter[slave_addr_list[current_slave_idx]].state_normal = HAL_BUSY;
-				modbus_send_read_input_regs(&usart_485_modbus, slave_addr, 0x04, 0, 2);
-			}
-			else 
-			{
-				liquid_flow_collection.state_normal = HAL_BUSY;
-				modbus_send_read_input_regs(&usart_485_modbus, slave_addr, 0x04, 0, 4);
-			}
+		uint8_t slave_addr = slave_addr_list[current_slave_idx];
+		if (slave_addr <= 0x04)	// 如果是液位变送器
+		{
+			liquid_level_transmitter[slave_addr_list[current_slave_idx]].state_normal = HAL_BUSY;
+			modbus_send_read_input_regs(&usart_485_modbus, slave_addr, 0x04, 0, 2);
+		}
+		else // 如果是流量传感器
+		{
+			liquid_flow_collection.state_normal = HAL_BUSY;
+			modbus_send_read_input_regs(&usart_485_modbus, slave_addr, 0x04, 0, 4);
+		}
 	}
 	return HAL_BUSY;
 }
@@ -190,13 +197,13 @@ void usart_485_analysisFunc(modbus_frame_t *frame, uint16_t *reg_values, uint16_
 {
 	for (int i = 0; i < 4; i++)	// 检查是否是液位变送器的指令
 	{
-		if (frame->slave_addr == liquid_level_transmitter[i].ID && frame->function == 0x04 && frame->length == 0x04)
+		if (frame->slave_addr == liquid_level_transmitter[i].ID && frame->function == 0x04 && frame->length == 0x05)
 		{
 			liquid_level_transmitter[i].receive_tick = HAL_GetTick();	// 记录接收的时间
 			memcpy(liquid_level_transmitter[i].receive_data, &frame->data[1], 4);	// 将4字节数据复制到结构体中
 		}
 	}
-	if (frame->slave_addr == liquid_flow_collection.ID && frame->function == 0x04 && frame->length == 0x04)
+	if (frame->slave_addr == liquid_flow_collection.ID && frame->function == 0x04 && frame->length == 0x09)
 	{
 			liquid_flow_collection.receive_tick = HAL_GetTick();	// 记录接收的时间
 			memcpy(liquid_flow_collection.receive_data, &frame->data[1], 8);	// 将8字节数据复制到结构体中
