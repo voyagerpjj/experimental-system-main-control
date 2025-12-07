@@ -195,6 +195,8 @@ HAL_StatusTypeDef usart_485_transmit_all(void)
 // 485的接收数据解析函数
 void usart_485_analysisFunc(modbus_frame_t *frame, uint16_t *reg_values, uint16_t reg_count)
 {
+	if (frame->slave_addr >= 0x06)
+		return ;
 	for (int i = 0; i < 4; i++)	// 检查是否是液位变送器的指令
 	{
 		if (frame->slave_addr == liquid_level_transmitter[i].ID && frame->function == 0x04 && frame->length == 0x05)
@@ -208,7 +210,7 @@ void usart_485_analysisFunc(modbus_frame_t *frame, uint16_t *reg_values, uint16_
 			liquid_flow_collection.receive_tick = HAL_GetTick();	// 记录接收的时间
 			memcpy(liquid_flow_collection.receive_data, &frame->data[1], 8);	// 将8字节数据复制到结构体中
 	}
-	
+
 }
 
 rx_ttl_message_typedef get_ttl_rx_message()

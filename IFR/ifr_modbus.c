@@ -158,7 +158,8 @@ void modbus_rtu_receive_callback(uint8_t *data, uint8_t len, void *user_data) {
     
     if (err == MODBUS_SUCCESS) {
         // 校验从机地址匹配
-        if (frame.slave_addr == ctx->current_request.slave_addr) {
+        if (frame.slave_addr == ctx->current_request.slave_addr) 
+				{
             ctx->current_response = frame;
             ctx->state = MODBUS_MASTER_COMPLETE;
             ctx->rx_count++;

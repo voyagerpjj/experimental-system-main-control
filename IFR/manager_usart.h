@@ -5,7 +5,7 @@
   *                         All Rights Reserved
   *
   *
-  * FileName 	: ifr_usart.h
+  * FileName 	: manager_usart.h
   * Version		: v3.0
   * Author		: LiuHao Lijiawei Albert panjiajun
   * Date			: 2025-11-10
@@ -13,8 +13,8 @@
   *********************************************************************
   */
 
-#ifndef __IFR_USART_H_
-#define __IFR_USART_H_
+#ifndef __MANAGER_USART_H_
+#define __MANAGER_USART_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,11 +43,11 @@ typedef struct
     uint32_t _updata_systick;                            // 最后更新时间戳
     uint16_t Data_Length;                                // 接收数据长度
     HAL_StatusTypeDef UsartRxState;                      // 串口接收状态
-} ifr_usart_typedef;
+} manager_usart_typedef;
 
 // 串口初始化
-void IFR_USART_Init(ifr_usart_typedef *ifr_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)( uint8_t *pData, uint8_t len));
-uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart);
+void manager_usart_Init(manager_usart_typedef *manager_usart, UART_HandleTypeDef *huart, void(*UART_Analysis_Function)( uint8_t *pData, uint8_t len));
+
 #endif  // USE_HAL_UART_REGISTER_CALLBACKS && USE_HAL_USART_REGISTER_CALLBACKS
 #endif  // HAL_UART_MODULE_ENABLED
 
@@ -55,4 +55,4 @@ uint8_t IFR_Uart_ID_Get(UART_HandleTypeDef *huart);
 }
 #endif
 
-#endif  // __IFR_USART_H_
+#endif  // __MANAGER_USART_H_
