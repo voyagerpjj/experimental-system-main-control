@@ -2,8 +2,9 @@
 #define _COMMUNICAT_H_
 
 #include "main.h"
-#include "ifr_crc.h"
-#include "ifr_modbus.h"
+#include "crc.h"
+#include "modbus.h"
+#include "ifr_custom_usart_protocol.h"
 /* 发送需求：
 ttl转网口
 1、四个变送器和四个流量传感器反馈数据
@@ -26,13 +27,6 @@ typedef enum
 	DEVICE_POWER_MSG,								// 电源控制指令
 } rx_modbus_message_enum;
   
-// typedef enum
-// {
-//     DEVICE_POWER = 0,   /* 处理类消息 */
-//     MOTOR_CONTROL,
-//     FORWARD,    /* 转发类消息 */
-//     ERROR,
-// }tx_messageType_enum;
 typedef enum
 {
 	YES = 0,	// 需要读取 或 需要上电
@@ -41,15 +35,16 @@ typedef enum
 
 typedef enum
 {
-	NO_ANSWER = 0,	// 不需要回复
-	NEED_ANSWER ,		// 需要回复
-} answer_enum;
-typedef __packed struct
+	WAIT = 0,		// 正在等待
+	UPDATA ,		// 已更新
+	RX_ERROR , 	// 通信校验错误
+} communicat_state_enum;
+typedef __packed struct  
 {
 	uint16_t motor_tar[4];	
 } motor_control_data_typedef;
 
-typedef __packed struct
+typedef  __packed struct
 {
 	rx_modbus_message_enum rx_modbus_message;
 } configuration_data_typedef;
@@ -59,17 +54,8 @@ typedef struct
 	rx_custom_message_enum rx_message_state;				// 自定义串口协议帧标识
 	motor_control_data_typedef motor_control_data;	// 自定义串口协议电机数据
 	configuration_data_typedef configuration_data;	// 配置模式下modbus协议数据
+	communicat_state_enum state;
 } rx_ttl_message_typedef;
-
-typedef struct
-{
-	uint8_t frame_header_1;	// 发送帧头 0x5A
-	uint8_t frame_header_2;	// 发送帧头 0xA5
-	uint8_t frame_type;			// 发送帧类型 0x02
-	uint8_t data[24];				// 数据 共24个字节
-	uint16_t CRC16;					// CRC16校验 
-} tx_ttl_message_typedef;
-
 
 typedef struct
 {
@@ -104,12 +90,23 @@ typedef struct
 	liquid_flow_collection_typedef liquid_flow_collection;
 	liquid_level_transmitter_typedef liquid_level_transmitter;
 }	equipment_typedef;
+void communicat_init(void);
+void communicat_start(void);
 
-rx_ttl_message_typedef get_ttl_rx_message(void);
-liquid_level_transmitter_typedef get_liquid_level_transmitter(int index);
-liquid_flow_collection_typedef get_liquid_flow_collection(void);
-void usart_485_transmit_init(void);
-HAL_StatusTypeDef usart_485_transmit_all(void);
-void usart_ttl_transmit(void);
+rx_ttl_message_typedef communicat_get_ttl_rx_message(void);
+
+liquid_level_transmitter_typedef communicat_get_liquid_level_transmitter(int index);
+
+liquid_flow_collection_typedef communicat_get_liquid_flow_collection(void);
+
+void communicat_485_transmit_reset(void);
+
+HAL_StatusTypeDef communicat_485_transmit_all(void);
+
+HAL_StatusTypeDef communicat_ttl_transmit_normal(void);
+
+HAL_StatusTypeDef communicat_ttl_transmit_error(void);
+	
+void reset_communica_ttl_rx_message_state(void);
 #endif  // _COMMUNICAT_H_
 

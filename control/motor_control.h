@@ -6,8 +6,7 @@
 #include "math.h"
 #include "string.h"
 #include "iwdg.h"
-#include "communication.h"
-#include "ifr_tim.h"
+#include "manager_tim.h"
 #include <stdlib.h>
 
 #define SPEED_MAX_PLUSE 3500
@@ -155,28 +154,18 @@ typedef struct
 #define SUBDIVIDE_RATIO 7                              // 7细分
 #define SUBDIVIDE_CYCLE_MS 7                           // 细分周期（7ms = 7 * 1ms）
 
-// 数值限制宏
-#define IFR_CLAMP(val, min, max) ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)))
+// float 类型（适配浮点型 ARR 计算、速度计算）
+static inline float IFR_CLAMP(float val, float min, float max)
+{
+    if (val < min) return min;
+    if (val > max) return max;
+    return val;
+}
 
 // 函数声明
 void motor_all_init(void);                             // 所有电机初始化
-void motor_enable(motorindex_enum motor_index);        // 电机使能
-void motor_disable(motorindex_enum motor_index);       // 电机失能
-void motor_control(motorindex_enum motor_index, uint16_t target_speed); // 电机控制
-void motor_set_speed(motorindex_enum motor_index, uint16_t speed); // 设置电机目标速度
+void motor_start(motorindex_enum motor_index, uint16_t target_speed); // 电机控制
+void motor_stop(motorindex_enum motor_index);          // 电机停止
 float motor_get_speed(motorindex_enum motor_index);    // 获取电机当前速度
-static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, 
-                      uint32_t channel, GPIO_TypeDef* enable_port, uint32_t enable_pin); // 电机初始化
-static void motor_tim_config_set(motorindex_enum motor_index); // 定时器配置设置
-static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed); // 设置电机状态
-static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, 
-                              uint16_t target_speed, float jerk); // Jerk控制
-static void motor_high_speed_minor_adjust(motorindex_enum motor_index, 
-                                         uint16_t target_speed); // 高速微调
-static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, 
-                                          uint32_t arr_count, dma_mode_enum mode); // DMA传输
-static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma); // DMA传输完成回调
-static void motor_dma_error_callback(DMA_HandleTypeDef *hdma); // DMA传输错误回调
-void test_control_time(void); // 测试控制时间
 
 #endif

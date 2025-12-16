@@ -33,8 +33,8 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 #include <stdbool.h>
 #include <string.h>
-#include <motor.h>
-#include <communication.h>
+
+
 //#include <SEGGER_RTT.h>
 //#include <SEGGER_SYSVIEW.h>
 /* USER CODE END Includes */

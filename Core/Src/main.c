@@ -26,7 +26,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "test.h"  
 #include "control.h"
 /* USER CODE END Includes */
 
@@ -58,10 +57,7 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-extern motorState_t motor[4];
-extern uartParams_t computer_uart;
-extern motorParams_t motor_params[Mmax];
-extern uint8_t g_MotorCtrlFlag;
+
 /* USER CODE END 0 */
 
 /**
@@ -102,30 +98,16 @@ int main(void)
   MX_UART4_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-//  log_debug("Main:System Begining......");
-	//test_init();
 	control_init();
+	control_start();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	HAL_Delay(500);
-//	HAL_GPIO_TogglePin(M1_EN_GPIO_Port, M1_EN_Pin);
-	//HAL_IWDG_Refresh(&hiwdg);
-//	test_runing();
-//	if(g_MotorCtrlFlag == 1)
-//	{
-//		for(motorIndex_e index = M1; index < Mmax; index ++)
-//		{
-//			if (motor[index].target_speed.result != motor[index].speed)
-//				sMoveSpeedStart(index, motor[index].target_speed.result);
-//		}
-//		g_MotorCtrlFlag = 0;
-//	}
-	
-	HAL_Delay(1);
+		//HAL_IWDG_Refresh(&hiwdg);
+		HAL_Delay(1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

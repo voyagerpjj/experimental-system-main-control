@@ -13,8 +13,8 @@
   *********************************************************************
   */
 
-#ifndef __IFR_CRC_H_
-#define __IFR_CRC_H_
+#ifndef __CRC_H_
+#define __CRC_H_
 #ifdef __cplusplus
 extern "C" {
 #endif

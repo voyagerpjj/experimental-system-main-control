@@ -337,7 +337,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../Bsp;../control;..\IFR</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include;../Bsp;../control;../IFR</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -525,28 +525,6 @@
         </Group>
         <Group>
           <GroupName>BSP</GroupName>
-          <Files>
-            <File>
-              <FileName>communication.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bsp\communication.c</FilePath>
-            </File>
-            <File>
-              <FileName>crc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bsp\crc.c</FilePath>
-            </File>
-            <File>
-              <FileName>motor.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bsp\motor.c</FilePath>
-            </File>
-            <File>
-              <FileName>test.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Bsp\test.c</FilePath>
-            </File>
-          </Files>
         </Group>
         <Group>
           <GroupName>Control</GroupName>
@@ -566,30 +544,35 @@
               <FileType>1</FileType>
               <FilePath>..\control\motor_control.c</FilePath>
             </File>
+            <File>
+              <FileName>ifr_custom_usart_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\control\ifr_custom_usart_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>modbus.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\control\modbus.c</FilePath>
+            </File>
+            <File>
+              <FileName>crc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\control\crc.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
           <GroupName>IFR</GroupName>
           <Files>
             <File>
-              <FileName>ifr_tim.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\IFR\ifr_tim.c</FilePath>
-            </File>
-            <File>
-              <FileName>ifr_crc.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\IFR\ifr_crc.c</FilePath>
-            </File>
-            <File>
-              <FileName>ifr_modbus.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\IFR\ifr_modbus.c</FilePath>
-            </File>
-            <File>
               <FileName>manager_usart.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\IFR\manager_usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>manager_tim.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\IFR\manager_tim.c</FilePath>
             </File>
           </Files>
         </Group>

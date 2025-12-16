@@ -9,13 +9,10 @@ typedef struct
 {
   uint16_t target_speed[MOTOR_COUNT];
 } target_speed_t;
-void control_init(void);
-
-void control_runing(void);
 
 typedef enum
 {
-	STOP = 0,				// 停止模式
+	STOP = 0,		// 停止模式
 	MOTOR_CONTROL,	// 电机控制模式
 } mode_enum;
 
@@ -33,6 +30,7 @@ typedef struct
 	motor_control_mode_enum motor_control_mode;
 } system_state_typedef;
 
-void communicat_runing(void);
+void control_init(void);
+void control_start(void);
 
 #endif // CONTROL_H
