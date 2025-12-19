@@ -109,6 +109,11 @@ void manager_usart_rx_callback(UART_HandleTypeDef *huart, uint16_t len)
 	if (USART_Pointers[uart_id] != NULL)
 			manager_usart_doubleBuffer_recevice(USART_Pointers[uart_id], len);
 }
+/**
+  * @brief   串口发送完成回调函数
+  * @param   huart: 串口句柄
+  * @retval  void
+  */
 void manager_usart_tx_callback(UART_HandleTypeDef *huart)
 {
 	uint8_t uart_id = manager_usart_id_get(huart);

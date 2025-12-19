@@ -16,7 +16,14 @@ static void motor_enable(motorindex_enum motor_index); // 电机使能
 static void motor_disable(motorindex_enum motor_index); // 电机失能
 static void motor_set_speed(motorindex_enum motor_index, uint16_t target_speed); // 设置电机速度
 static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed); // 设置电机状态
+// 1. 记录开始时间（t1必须是uint32_t类型）
+#define GET_TIME(t1)  do { (t1) = HAL_GetTick(); } while(0)
 
+// 2. 计算耗时（t2 = 结束时间 - 开始时间，单位ms；t1=开始时间，t2=耗时）
+#define CALC_TIME(t1)  HAL_GetTick() - (t1)
+
+uint32_t motor_time_start[4] = {0};
+uint32_t motor_time_end[4] = {0};
 // 所有电机初始化
 void motor_all_init()
 {
@@ -26,8 +33,8 @@ void motor_all_init()
     motor_init(MOTOR_4, &htim5, TIM_CHANNEL_2, M4_EN_GPIO_Port, M4_EN_Pin);
 }
 
-uint16_t target_arr = 65535;
-uint8_t start = 1;
+uint16_t target_arr = 1349;
+uint8_t start = 0;
 //===== 各段拟合公式（便于调试） ===== 0.988142×下发速度 + 2.409820  （125~200rpm，一次拟合）: 实际速度 = 0.998000×下发速度 + 0.861309   0.00013920×下发速度² + 0.943708×下发速度 + 5.911398 实际速度 = 0.00000485×下发速度² + 0.996881×下发速度 + 0.899812
 
 static uint16_t front_speed(uint16_t target_speed)
@@ -37,29 +44,36 @@ static uint16_t front_speed(uint16_t target_speed)
 	front_speed = (ftarget_speed * ftarget_speed * (-0.00000485f) + ftarget_speed * (2 - 0.996881f) - 0.899812f ) * 10.0f;
 	return front_speed;
 }
+
 uint16_t tar_speed = 0;
+uint32_t t1, t2, t3, t4, t5 = 0;
 // 电机控制函数
 void motor_start(motorindex_enum motor_index, uint16_t target_speed)
 {
-    target_speed = IFR_CLAMP(target_speed, 0, 6000); // 限制电机速度范围为0-600rpm
+	GET_TIME(t1);
+  target_speed = IFR_CLAMP(target_speed, 0, 6000); // 限制电机速度范围为0-600rpm
+//	if (target_speed == 6000)
 //    motor_enable(motor_index); // 使能电机
-    
-//    if (start == 1)
-//    {
-//        start = 1;
-//        uint32_t psc = Motor_list[motor_index].speed_calc.psc;
-//        
-//        // 计算目标ARR值（50rpm对应13499）
-//        // 将目标ARR值放入DMA传输数组中
-//        Motor_list[motor_index].speed_calc.toggle_pulse[0] = target_arr;
-//        Motor_list[motor_index].speed_calc.accel_pulse = 1;
-//        
-//        // 启动DMA传输更新ARR值
-//        motor_dma_transmit(motor_index, Motor_list[motor_index].speed_calc.toggle_pulse, 1, DMA_MODE_NORMAL);
-//    }
+// else 
+//		motor_disable(motor_index); // 失能电机
+//	if (start == 1)
+//	{
+//			start = 1;
+//			uint32_t psc = Motor_list[motor_index].speed_calc.psc;
+//			
+//			// 计算目标ARR值（50rpm对应13499）
+//			// 将目标ARR值放入DMA传输数组中
+//			Motor_list[motor_index].speed_calc.toggle_pulse[0] = target_arr;
+//			Motor_list[motor_index].speed_calc.accel_pulse = 1;
+//			
+//			// 启动DMA传输更新ARR值
+//			motor_dma_transmit(motor_index, Motor_list[motor_index].speed_calc.toggle_pulse, 1, DMA_MODE_NORMAL);
+//	}
 	motor_set_state(motor_index, target_speed);
 	tar_speed = front_speed(target_speed);
 	motor_set_speed(motor_index, tar_speed);
+	t2 = HAL_GetTick() - t1;
+	//CALC_TIME(t1, t2);
 }
 
 // 电机停止函数
@@ -186,15 +200,19 @@ static void motor_set_speed(motorindex_enum motor_index, uint16_t speed)
 
     if (motor->last_target_speed != target_rpm) // 如果电机目标速度发生变化
     {
+			GET_TIME(t1);
 			motor_jerk_control(motor_index, motor->current_speed * 10.0f, speed, JERK); // 使用Jerk控制平滑加速       
 			motor->last_target_speed = target_rpm;
+			t3 = CALC_TIME(t1);
     }
 
-    else if (motor->state == MOTOR_AVESPEED) // 如果电机当前速度接近目标速度
+    else if (motor->state == MOTOR_AVESPEED) // 如果电机进入匀速阶段
     {
         if (motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST && motor->last_state == MOTOR_ACTIVE) // 如果电机在高速微调状态中。从加速过程切换至匀速过程
         {
-           motor_high_speed_minor_adjust(motor_index, speed); // 使用高速微调算法
+					GET_TIME(t1);
+          motor_high_speed_minor_adjust(motor_index, speed); // 使用高速微调算法
+					t4 = CALC_TIME(t1);
         }
     }
 
@@ -340,6 +358,7 @@ static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed
     motor->sum_time_all = sum_time;
     motor->speed_calc.accel_pulse = pulse_count;
     motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, pulse_count, DMA_MODE_NORMAL);
+		GET_TIME(motor_time_start[motor_index]);
 }
 
 int ARR_1 = 0;
@@ -409,7 +428,7 @@ static void motor_high_speed_minor_adjust(motorindex_enum motor_index, uint16_t 
 // 电机定时器配置设置
 static void motor_tim_config_set(motorindex_enum motor_index)
 {
-    HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
+    
     Motor* motor = &Motor_list[motor_index]; // 获取当前电机对象
     TIM_HandleTypeDef* htim = motor->motor_params.timer;
     uint32_t channel = motor->motor_params.channel;
@@ -459,7 +478,6 @@ int num_2 = 0;
 static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, 
                                           uint32_t arr_count, dma_mode_enum mode)
 {
-    HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
     num_2++;
     
     if (motor_index >= MOTOR_COUNT || arr_values == NULL || arr_count == 0)
@@ -558,8 +576,8 @@ static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma)
 			// 如果是Jerk加速的正常模式完成，则电机进入匀速状态
 			if (motor->dma_prame.dma_mode == DMA_MODE_NORMAL) 
 			{
+				motor_time_end[i]  = CALC_TIME(motor_time_start[i]);
 				motor->dma_prame.dma_state = DMA_STATE_COMPLETE;
-				HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
 				// Jerk加速完成，电机进入匀速状态
 				motor->state = MOTOR_AVESPEED;
 				motor->current_speed = ARR_TO_RPM(motor->motor_params.timer->Instance->ARR, motor->motor_params.timer->Instance->PSC);// 通过当前ARR值计算当前速度

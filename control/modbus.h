@@ -43,7 +43,7 @@ extern "C" {
 #define MODBUS_RTU_MIN_SIZE           4
 #define MODBUS_RTU_MAX_SIZE           256
 #define MODBUS_CRC_SIZE               2
-#define MODBUS_RESPONSE_TIMEOUT_MS    4  // 3ms响应超时
+#define MODBUS_RESPONSE_TIMEOUT_MS    5  // 3ms响应超时
 
 // -------------------------- 错误码定义 --------------------------
 typedef enum {
@@ -75,7 +75,7 @@ typedef enum {
 } modbus_master_state_e;
 
 // -------------------------- 回调函数类型 --------------------------
-typedef void (*modbus_data_callback_t)(modbus_frame_t *frame);
+typedef void (*modbus_data_callback_t)(modbus_frame_t *frame, uint8_t *data, uint8_t len);
 
 // -------------------------- 核心上下文（内嵌串口对象，单串口） --------------------------
 typedef struct {
@@ -83,7 +83,8 @@ typedef struct {
     UART_HandleTypeDef *huart;        // HAL串口句柄
     modbus_data_callback_t DataPrameFuncPointer;   // 用户解析回调
 		void(*TxCompleteFuncPointer)(UART_HandleTypeDef *huart);    // 发送完成函数指针
-    uint32_t ResponseTimeoutMs;     // 超时时间
+		uint32_t ResponseTimenow;					// 当前响应时间
+    uint32_t ResponseTimeoutMs;     	// 超时时间
     modbus_master_state_e State;      // 状态机
     uint32_t StateTimestamp;         // 状态时间戳
     modbus_frame_t CurrentRequest;   // 当前请求帧

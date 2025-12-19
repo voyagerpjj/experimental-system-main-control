@@ -107,7 +107,7 @@ typedef struct
 
 // Jerk控制相关参数
 #define JERK_MAX_SPEED RPM_TO_PULSE(MOTOR_MAX_SPEED_RPM)  // Jerk最大速度（单位：pulse/s）
-#define JERK_MAX_TIM 0.1f                                 // Jerk最大时间（一半时间加速，一半时间减速）（单位：s）
+#define JERK_MAX_TIM 0.04f                                // Jerk最大时间（一半时间加速，一半时间减速）（单位：s）
 // Jerk加加速度：分为加速度阶段和减速度阶段，Jerk = 2 * max_speed_error / max_half_time^2（单位：pulse/s^3）
 #define JERK (float)(JERK_MAX_SPEED / ((JERK_MAX_TIM / 2.0f) * (JERK_MAX_TIM / 2.0f)))    
 

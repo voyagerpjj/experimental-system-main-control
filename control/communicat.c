@@ -7,13 +7,12 @@ modbus_rtu_t usart_485_modbus;
 manager_usart_typedef usart_ttl;
 
 void communicat_ttl_analysisFunc(uint8_t *pData, uint8_t len);
-void communicat_485_analysisFunc(modbus_frame_t *frame);
+void communicat_485_analysisFunc(modbus_frame_t *frame, uint8_t *data, uint8_t len);
 void communicat_485_tx_analysisFunc(UART_HandleTypeDef *huart);
 
 static bool check_slave_idx_valid(void);
 static void reset_device_state(uint8_t slave_addr, HAL_StatusTypeDef state);
 static uint8_t slave_switch_idx(uint8_t current_idx, uint8_t slave_count);
-static HAL_StatusTypeDef communicat_ttl_transmit_configuration(void);
 
 // 通信初始化
 void communicat_init(void)
@@ -33,6 +32,8 @@ void communicat_start(void)
 	modbus_rtu_start(&usart_485_modbus);	// 启动485串口接收
 	manager_usart_start(&usart_ttl);			// 启动TTL串口接收
 }
+
+uint32_t tt1, tt2, tt3 = 0;
 // 上位机下发的ttl数据解析函数
 // 帧头 			2字节 0x5A 0xA5 
 // 帧类型 		1字节 0x01或0x03
@@ -41,6 +42,9 @@ void communicat_start(void)
 // CRC16校验 	2字节
 void communicat_ttl_analysisFunc(uint8_t *pData, uint8_t len)
 {
+	tt2 = HAL_GetTick() - tt1;
+	tt1 = HAL_GetTick();
+	HAL_GPIO_TogglePin(STATE_GPIO_Port, STATE_Pin);
 	if (rx_ttl_message.rx_message_state == MOTOR_CONTROL_MSG)	// 若还未进入配置模式，还处于自定义串口协议中
 	{
 		ifr_custom_protocol_typedef ifr_custom_protocol_ttl_prame;
@@ -76,22 +80,25 @@ void communicat_ttl_analysisFunc(uint8_t *pData, uint8_t len)
 					}
 				}
 			}
-			else if (ifr_custom_protocol_ttl_prame.DataType == 0x0F)	// 若为进入配置模式指令
+		}
+		else // 若数据接收出错,有可能是进入配置模式指令，10 06 00 00 00 00 8A 8B
+		{
+			if (len == 8 && pData[0] == 0x10 && pData[1] == 0x06 && pData[2] == 0x00 && pData[3] == 0x00 && pData[4] == 0x00 && pData[5] == 0x00 && pData[6] == 0x8A && pData[7] == 0x8B)
 			{
 				rx_ttl_message.rx_message_state = CONFIGURATION_MSG;	// 进入配置模式
-				while (communicat_ttl_transmit_configuration() != HAL_OK);	// 等待进入配置模式指令的反馈指令发送成功
+				while (manager_usart_transmit(&usart_ttl, pData, len) != HAL_OK)
+					HAL_Delay(1);	// 等待进入配置模式指令的反馈指令发送成功
 			}
-		}
-		else // 若数据接收出错
-		{
-			rx_ttl_message.state = RX_ERROR;
+			else 
+				rx_ttl_message.state = RX_ERROR;
+			
 			return;
 		}
 		
 	}
 	else if (rx_ttl_message.rx_message_state == CONFIGURATION_MSG) // 若已经进入配置模式，处于标准Modbus RTU协议中
 	{
-		if (pData[0] == 0x0F && pData[1] == 0x06 && (uint16_t)((uint16_t)(pData[2] << 8) | pData[3]) == 0x0001)	// 通过判断ID、地址码、寄存器地址来判断是否为电源配置命令
+		if (pData[0] == 0x0F && pData[1] == 0x06 && (uint16_t)((uint16_t)(pData[2] << 8) | pData[3]) == 0x0001)	// 通过判断ID、功能码、寄存器地址来判断是否为电源配置命令
 		{
 			if ((uint16_t)((pData[6] << 8) | pData[7]) == CalcCRC16_Modbus(pData, 6))	// CRC16校验通过
 			{
@@ -101,6 +108,23 @@ void communicat_ttl_analysisFunc(uint8_t *pData, uint8_t len)
 				liquid_level_transmitter[1].liquid_level_transmitter_power = (pData[5] & 0x02) ? YES : NO;
 				liquid_level_transmitter[2].liquid_level_transmitter_power = (pData[5] & 0x04) ? YES : NO;
 				liquid_level_transmitter[3].liquid_level_transmitter_power = (pData[5] & 0x08) ? YES : NO;
+				for (int i = 0; i < 4; i++)	// 做对应的电源控制处理
+				{
+					GPIO_TypeDef* port = NULL;
+					uint16_t pin = 0;
+					// 匹配对应引脚
+					switch(i) {
+							case 0: port = TRAN1_EN_GPIO_Port; pin = TRAN1_EN_Pin; break;
+							case 1: port = TRAN2_EN_GPIO_Port; pin = TRAN2_EN_Pin; break;
+							case 2: port = TRAN3_EN_GPIO_Port; pin = TRAN3_EN_Pin; break;
+							case 3: port = TRAN4_EN_GPIO_Port; pin = TRAN4_EN_Pin; break;
+					}
+					if (liquid_level_transmitter[i].liquid_level_transmitter_power == NO)
+							HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+					else 
+							HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+				}
+				manager_usart_transmit(&usart_ttl, pData, len);	// 若将这个帧反馈回TTL上位机
 			}
 			else 
 				rx_ttl_message.state = RX_ERROR;	// 校验错误接收则标识数据错误
@@ -109,6 +133,7 @@ void communicat_ttl_analysisFunc(uint8_t *pData, uint8_t len)
 		{
 			rx_ttl_message.state = UPDATA;	// 正常接收则标识数据已更新
 			rx_ttl_message.configuration_data.rx_modbus_message = TRANSMITTER_CONFIGURATION_MSG;
+			HAL_GPIO_WritePin(COM_CTS_GPIO_Port, COM_CTS_Pin, GPIO_PIN_SET);	// 拉高CTS引脚启动485通信
 			manager_usart_transmit(&usart_485_modbus.ManagerUsart, pData, len);	// 若不为电源配置命令则直接转发给485
 		}
 	}
@@ -146,18 +171,7 @@ HAL_StatusTypeDef communicat_ttl_transmit_error(void)
 {
 	return ifr_custom_protocol_transmit(&usart_ttl, 0xF0, 0, NULL);	// 发送错误状态的反馈指令
 }
-/*
-// 往上位机发的ttl数据发送配置指令的反馈指令函数
-配置指令的反馈指令帧
-	 帧头 			2字节 0x5A 0xA5 
-	 帧类型 		1字节 0xF0
-	 数据段长度 1字节 0
-	 CRC16校验 	2字节 
-*/
-static HAL_StatusTypeDef communicat_ttl_transmit_configuration(void)
-{
-	return ifr_custom_protocol_transmit(&usart_ttl, 0x0F, 0, NULL);	// 发送进入配置模式的反馈指令
-}
+
 
 static uint8_t current_slave_idx = 0;
 uint8_t slave_addr_list[5] = {0};
@@ -311,22 +325,29 @@ HAL_StatusTypeDef communicat_485_transmit_all(void)
 }
 
 // 485的接收数据解析函数
-void communicat_485_analysisFunc(modbus_frame_t *frame)
+void communicat_485_analysisFunc(modbus_frame_t *frame, uint8_t *data, uint8_t len)
 {
-	if (frame->SlaveAddr >= 0x06)
-		return ;
-	for (int i = 0; i < 4; i++)	// 检查是否是液位变送器的指令
+	if (rx_ttl_message.rx_message_state == MOTOR_CONTROL_MSG)
 	{
-		if (frame->SlaveAddr == liquid_level_transmitter[i].ID && frame->FunctionId == 0x04 && frame->Length == 0x05)
+		if (frame->SlaveAddr >= 0x06)
+			return ;
+		for (int i = 0; i < 4; i++)	// 检查是否是液位变送器的指令
 		{
-			liquid_level_transmitter[i].receive_tick = HAL_GetTick();	// 记录接收的时间
-			memcpy(liquid_level_transmitter[i].receive_data, &frame->Data[1], 4);	// 将4字节数据复制到结构体中
+			if (frame->SlaveAddr == liquid_level_transmitter[i].ID && frame->FunctionId == 0x04 && frame->Length == 0x05)
+			{
+				liquid_level_transmitter[i].receive_tick = HAL_GetTick();	// 记录接收的时间
+				memcpy(liquid_level_transmitter[i].receive_data, &frame->Data[1], 4);	// 将4字节数据复制到结构体中
+			}
+		}
+		if (frame->SlaveAddr == liquid_flow_collection.ID && frame->FunctionId == 0x04 && frame->Length == 0x09)
+		{
+				liquid_flow_collection.receive_tick = HAL_GetTick();	// 记录接收的时间
+				memcpy(liquid_flow_collection.receive_data, &frame->Data[1], 8);	// 将8字节数据复制到结构体中
 		}
 	}
-	if (frame->SlaveAddr == liquid_flow_collection.ID && frame->FunctionId == 0x04 && frame->Length == 0x09)
+	else 
 	{
-			liquid_flow_collection.receive_tick = HAL_GetTick();	// 记录接收的时间
-			memcpy(liquid_flow_collection.receive_data, &frame->Data[1], 8);	// 将8字节数据复制到结构体中
+		manager_usart_transmit(&usart_ttl, data, len);	// 若在配置模式下则直接转发给TTL
 	}
 
 }

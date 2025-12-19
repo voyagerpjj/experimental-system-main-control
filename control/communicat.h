@@ -108,5 +108,7 @@ HAL_StatusTypeDef communicat_ttl_transmit_normal(void);
 HAL_StatusTypeDef communicat_ttl_transmit_error(void);
 	
 void reset_communica_ttl_rx_message_state(void);
+
+extern uint32_t tt1, tt2;
 #endif  // _COMMUNICAT_H_
 

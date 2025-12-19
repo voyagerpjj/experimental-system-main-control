@@ -7,9 +7,11 @@ static modbus_rtu_t *g_modbus_ctx = NULL;
 // -------------------------- 私有函数声明 --------------------------
 static modbus_error_e modbus_build_rtu_frame(modbus_rtu_t *ctx, const modbus_frame_t *frame, uint8_t *buffer, uint16_t *length);
 static modbus_error_e modbus_parse_rtu_frame(modbus_rtu_t *ctx, uint8_t *buffer, uint16_t length, modbus_frame_t *frame);
-static void modbus_parse_input_regs_response(modbus_rtu_t *ctx, modbus_frame_t *frame);
+static void modbus_parse_input_regs_response(modbus_rtu_t *ctx, modbus_frame_t *frame, uint8_t *data, uint8_t len);
 void modbus_rtu_receive_callback(uint8_t *data, uint8_t len, void *user_data);
 void modbus_rtu_tx_complete_callback(UART_HandleTypeDef *huart, void *user_data);
+
+
 
 // -------------------------- 中转回调（单串口简化版） --------------------------
 void modbus_usart_analysis_cb(uint8_t *pData, uint8_t len) {
@@ -125,12 +127,6 @@ static modbus_error_e modbus_parse_rtu_frame(modbus_rtu_t *ctx, uint8_t *buffer,
     frame->FunctionId = buffer[1];
     frame->Length = length - 4;  // 地址+功能码+CRC(2)
     
-    // 处理异常响应
-    if (frame->FunctionId & 0x80) {
-        frame->Data[0] = buffer[2];
-        return MODBUS_ERROR_FRAME;
-    }
-    
     // 复制数据段
     if (frame->Length > 0) {
         if (frame->Length > MODBUS_MAX_PDU_SIZE) {
@@ -144,12 +140,13 @@ static modbus_error_e modbus_parse_rtu_frame(modbus_rtu_t *ctx, uint8_t *buffer,
 }
 
 // -------------------------- 响应解析 --------------------------
-static void modbus_parse_input_regs_response(modbus_rtu_t *ctx, modbus_frame_t *frame) {
+static void modbus_parse_input_regs_response(modbus_rtu_t *ctx, modbus_frame_t *frame, uint8_t *data, uint8_t len) 
+{
     if (ctx == NULL || frame == NULL || ctx->DataPrameFuncPointer == NULL) {
         return;
     }
     // 调用用户回调
-    ctx->DataPrameFuncPointer(frame);
+    ctx->DataPrameFuncPointer(frame, data, len);
 }
 
 // -------------------------- 接收回调 --------------------------
@@ -160,27 +157,17 @@ void modbus_rtu_receive_callback(uint8_t *data, uint8_t len, void *user_data)
         return;
     }
     
-    // 仅处理等待响应的状态
-    if (ctx->State != MODBUS_STATE_WAITING_RESPONSE) {
-        return;
-    }
-    
     // 解析帧
     static modbus_frame_t frame;
     modbus_error_e err = modbus_parse_rtu_frame(ctx, data, len, &frame);
     
-    if (err == MODBUS_SUCCESS) {
-        // 校验从机地址匹配
-        if (frame.SlaveAddr == ctx->CurrentRequest.SlaveAddr) 
-				{
-            ctx->CurrentRequest = frame;
-            ctx->State = MODBUS_STATE_COMPLETE;
-            ctx->RxCount++;
-            modbus_parse_input_regs_response(ctx, &frame);
-        }
-    } else {
-        ctx->ErrorCount++;
-        ctx->State = MODBUS_STATE_ERROR;
+    if (err == MODBUS_SUCCESS) 
+		{
+			ctx->CurrentRequest = frame;
+			ctx->State = MODBUS_STATE_COMPLETE;
+			ctx->RxCount++;
+			
+			modbus_parse_input_regs_response(ctx, &frame, data, len);
     }
 }
 void modbus_rtu_tx_complete_callback(UART_HandleTypeDef *huart, void *user_data)
@@ -242,19 +229,25 @@ bool modbus_master_is_busy(modbus_rtu_t *ctx) {
     if (ctx == NULL) return false;
     return (ctx->State == MODBUS_STATE_WAITING_RESPONSE);
 }
-
+float count_com, time_all = 0;
+float time_avg = 0;
 // -------------------------- 超时处理 --------------------------
 modbus_error_e modbus_master_process(modbus_rtu_t *ctx) 
 {
     if (ctx == NULL) return MODBUS_ERROR_INVALID_PARAM;
     
     uint32_t current_time = HAL_GetTick();
-    if (ctx->State == MODBUS_STATE_WAITING_RESPONSE) {
-        if (current_time - ctx->StateTimestamp > ctx->ResponseTimeoutMs) {
-            ctx->State = MODBUS_STATE_TIMEOUT;
-            ctx->ErrorCount++;
-            return MODBUS_ERROR_TIMEOUT;
-        }
+    if (ctx->State == MODBUS_STATE_WAITING_RESPONSE) 
+		{
+			ctx->ResponseTimenow = current_time - ctx->StateTimestamp;
+			time_all += ctx->ResponseTimenow;
+			time_avg = time_all / count_com ++ ;
+			if (ctx->ResponseTimenow >= ctx->ResponseTimeoutMs) 
+			{
+				ctx->State = MODBUS_STATE_TIMEOUT;
+				ctx->ErrorCount++;
+				return MODBUS_ERROR_TIMEOUT;
+			}
     }
     else if (ctx->State == MODBUS_STATE_ERROR)
     {
