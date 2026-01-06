@@ -1,30 +1,144 @@
 #include "motor_control.h"
+
+/**
+  * @brief   电机对象列表（存储所有电机的配置和状态）
+  */
 Motor Motor_list[MOTOR_COUNT];
+
+/**
+  * @brief   全局临时变量：记录当前电机速度（rpm单位）
+  */
 float now_speed = 0;
+
+/**
+  * @brief   停止电机对应的DMA传输
+  * @param   motor: 电机对象指针
+  * @retval  void
+  */
 static void motor_dma_stop(Motor* motor);
+
+/**
+  * @brief   单个电机初始化配置
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   timer: 定时器句柄指针
+  * @param   channel: 定时器通道号
+  * @param   enable_port: 使能引脚GPIO端口
+  * @param   enable_pin: 使能引脚GPIO引脚号
+  * @retval  void
+  */
 static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, 
-                      uint32_t channel, GPIO_TypeDef* enable_port, uint32_t enable_pin); // 电机初始化
-static void motor_tim_config_set(motorindex_enum motor_index); // 定时器配置设置
+                      uint32_t channel, GPIO_TypeDef* enable_port, uint32_t enable_pin);
+
+/**
+  * @brief   电机定时器参数配置设置（根据速度状态切换PSC）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
+static void motor_tim_config_set(motorindex_enum motor_index);
+
+/**
+  * @brief   电机Jerk控制（S曲线加减速算法）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   start_speed: 起始速度（0.1rpm单位）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @param   jerk: 加加速度（Jerk）值
+  * @retval  void
+  */
 static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, 
-                              uint16_t target_speed, float jerk); // Jerk控制
+                              uint16_t target_speed, float jerk);
+
+/**
+  * @brief   电机高速微调算法（细分周期补偿ARR浮点误差）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
 static void motor_high_speed_minor_adjust(motorindex_enum motor_index, 
-                                         uint16_t target_speed); // 高速微调
-static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, uint32_t arr_count, dma_mode_enum mode); // DMA传输
-static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma); // DMA传输完成回调
-static void motor_dma_error_callback(DMA_HandleTypeDef *hdma); // DMA传输错误回调
-static void motor_enable(motorindex_enum motor_index); // 电机使能
-static void motor_disable(motorindex_enum motor_index); // 电机失能
-static void motor_set_speed(motorindex_enum motor_index, uint16_t target_speed); // 设置电机速度
-static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed); // 设置电机状态
-// 1. 记录开始时间（t1必须是uint32_t类型）
+                                         uint16_t target_speed);
+
+/**
+  * @brief   电机DMA传输配置与启动
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   arr_values: ARR值数组指针
+  * @param   arr_count: ARR值数组长度
+  * @param   mode: DMA传输模式（正常/循环）
+  * @retval  HAL_StatusTypeDef: HAL状态（HAL_OK/HAL_ERROR等）
+  */
+static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, uint32_t arr_count, dma_mode_enum mode);
+
+/**
+  * @brief   DMA传输完成回调函数
+  * @param   hdma: DMA句柄指针
+  * @retval  void
+  */
+static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma);
+
+/**
+  * @brief   DMA传输错误回调函数
+  * @param   hdma: DMA句柄指针
+  * @retval  void
+  */
+static void motor_dma_error_callback(DMA_HandleTypeDef *hdma);
+
+/**
+  * @brief   电机使能（置位使能引脚）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
+static void motor_enable(motorindex_enum motor_index);
+
+/**
+  * @brief   电机失能（复位使能引脚）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
+static void motor_disable(motorindex_enum motor_index);
+
+/**
+  * @brief   设置电机目标速度（核心速度控制逻辑）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
+static void motor_set_speed(motorindex_enum motor_index, uint16_t target_speed);
+
+/**
+  * @brief   设置电机运行状态（空闲/匀速/变速）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
+static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed);
+
+/**
+  * @brief   获取当前系统时间（毫秒级）并赋值给变量
+  * @param   t1: 存储时间的变量（uint32_t类型）
+  * @retval  void
+  */
 #define GET_TIME(t1)  do { (t1) = HAL_GetTick(); } while(0)
 
-// 2. 计算耗时（t2 = 结束时间 - 开始时间，单位ms；t1=开始时间，t2=耗时）
+/**
+  * @brief   计算从t1开始到当前的耗时（毫秒级）
+  * @param   t1: 起始时间（uint32_t类型）
+  * @retval  uint32_t: 耗时（ms）
+  */
 #define CALC_TIME(t1)  HAL_GetTick() - (t1)
 
+/**
+  * @brief   电机速度控制计时起始数组（4个电机）
+  */
 uint32_t motor_time_start[4] = {0};
+
+/**
+  * @brief   电机速度控制计时结束数组（4个电机）
+  */
 uint32_t motor_time_end[4] = {0};
-// 所有电机初始化
+
+/**
+  * @brief   所有电机初始化（批量初始化4个电机）
+  * @param   void
+  * @retval  void
+  */
 void motor_all_init()
 {
     motor_init(MOTOR_1, &htim2, TIM_CHANNEL_2, M1_EN_GPIO_Port, M1_EN_Pin);
@@ -33,10 +147,23 @@ void motor_all_init()
     motor_init(MOTOR_4, &htim5, TIM_CHANNEL_2, M4_EN_GPIO_Port, M4_EN_Pin);
 }
 
+/**
+  * @brief   全局临时变量：目标ARR值
+  */
 uint16_t target_arr = 1349;
+
+/**
+  * @brief   全局临时变量：电机启动标志位
+  */
 uint8_t start = 0;
+
 //===== 各段拟合公式（便于调试） ===== 0.988142×下发速度 + 2.409820  （125~200rpm，一次拟合）: 实际速度 = 0.998000×下发速度 + 0.861309   0.00013920×下发速度² + 0.943708×下发速度 + 5.911398 实际速度 = 0.00000485×下发速度² + 0.996881×下发速度 + 0.899812
 
+/**
+  * @brief   速度前馈补偿计算（根据负载拟合公式修正速度）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  uint16_t: 补偿后的前馈速度（0.1rpm单位）
+  */
 static uint16_t front_speed(uint16_t target_speed)
 {
 	uint16_t front_speed = 0;
@@ -45,327 +172,340 @@ static uint16_t front_speed(uint16_t target_speed)
 	return front_speed;
 }
 
+/**
+  * @brief   全局临时变量：补偿后的目标速度（0.1rpm单位）
+  */
 uint16_t tar_speed = 0;
+
+/**
+  * @brief   全局临时变量：计时用临时变量
+  */
 uint32_t t1, t2, t3, t4, t5 = 0;
-// 电机控制函数
+
+/**
+  * @brief   电机启动控制函数（含速度限制、前馈补偿）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
 void motor_start(motorindex_enum motor_index, uint16_t target_speed)
 {
 	GET_TIME(t1);
   target_speed = IFR_CLAMP(target_speed, 0, 6000); // 限制电机速度范围为0-600rpm
-//	if (target_speed == 6000)
-//    motor_enable(motor_index); // 使能电机
-// else 
-//		motor_disable(motor_index); // 失能电机
-//	if (start == 1)
-//	{
-//			start = 1;
-//			uint32_t psc = Motor_list[motor_index].speed_calc.psc;
-//			
-//			// 计算目标ARR值（50rpm对应13499）
-//			// 将目标ARR值放入DMA传输数组中
-//			Motor_list[motor_index].speed_calc.toggle_pulse[0] = target_arr;
-//			Motor_list[motor_index].speed_calc.accel_pulse = 1;
-//			
-//			// 启动DMA传输更新ARR值
-//			motor_dma_transmit(motor_index, Motor_list[motor_index].speed_calc.toggle_pulse, 1, DMA_MODE_NORMAL);
-//	}
 	motor_set_state(motor_index, target_speed);
-	tar_speed = front_speed(target_speed);
+	tar_speed = front_speed(target_speed);	// 根据实际负载情况的速度前馈补偿
 	motor_set_speed(motor_index, tar_speed);
 	t2 = HAL_GetTick() - t1;
-	//CALC_TIME(t1, t2);
 }
 
-// 电机停止函数
+/**
+  * @brief   电机停止控制函数（调用motor_start设置速度为0）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
 void motor_stop(motorindex_enum motor_index)
 {
-    motor_start(motor_index, 0);
+	motor_start(motor_index, 0);
 }
-// 电机使能
+
+/**
+  * @brief   电机使能（置位使能引脚）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
 static void motor_enable(motorindex_enum motor_index)
 {
-    if(motor_index >= MOTOR_COUNT)
-        return;
-    HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, 
-                     Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_SET);
+	if(motor_index >= MOTOR_COUNT)
+			return;
+	HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_SET);
 }
 
-// 电机失能
+/**
+  * @brief   电机失能（复位使能引脚）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
 static void motor_disable(motorindex_enum motor_index)
 {
-    // 当电机需要停止时,关闭使能
-    if(motor_index >= MOTOR_COUNT)
-        return;
-    
-    // 将电机使能引脚设置为低电平，从而关闭电机
-    HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, 
-                     Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_RESET);
-    Motor_list[motor_index].current_speed = 0;
+	// 当电机需要停止时,关闭使能
+	if(motor_index >= MOTOR_COUNT)
+			return;
+	
+	// 将电机使能引脚设置为低电平，从而关闭电机
+	HAL_GPIO_WritePin(Motor_list[motor_index].motor_params.enable_port, Motor_list[motor_index].motor_params.enable_pin, GPIO_PIN_RESET);
+	Motor_list[motor_index].current_speed = 0;
 }
 
+/**
+  * @brief   全局临时变量：存储当前ARR值
+  */
 int ARR_2 = 0;
+
+/**
+  * @brief   全局临时变量：速度分辨率
+  */
 float resolution = 0;
 
-// 电机状态机：根据当前速度和目标速度设置状态
+/**
+  * @brief   电机状态机处理（判断空闲/匀速/变速状态）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
 static void motor_set_state(motorindex_enum motor_index, uint16_t target_speed)
 {
-    Motor *this_motor = &Motor_list[motor_index]; // 获取当前电机对象
-    float tar_speed = _01RPM_TO_RPM(target_speed);
-    now_speed = ARR_TO_RPM(this_motor->motor_params.timer->Instance->ARR, 
-                          this_motor->motor_params.timer->Instance->PSC);
-    ARR_2 = this_motor->motor_params.timer->Instance->ARR;
-    resolution = SPEED_RESOLUTION(tar_speed, this_motor->speed_calc.psc);
-    
-    // 判断电机当前状态：停止、恒速、加速减速
-    if (tar_speed < 0.01f)
-        this_motor->state = MOTOR_IDLE;
-    
-    else if (fabs(this_motor->current_speed - tar_speed) <= 0.54f && this_motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST)
-        this_motor->state = MOTOR_AVESPEED;
-
-    else if (fabs(this_motor->current_speed - tar_speed) >= 0.1f)
-        this_motor->state = MOTOR_ACTIVE;
-		
-		else 
+	Motor *this_motor = &Motor_list[motor_index]; // 获取当前电机对象
+	float tar_speed = _01RPM_TO_RPM(target_speed);	// 将0.1rpm转为1rpm单位
+	now_speed = ARR_TO_RPM(this_motor->motor_params.timer->Instance->ARR, 
+												this_motor->motor_params.timer->Instance->PSC);
+	ARR_2 = this_motor->motor_params.timer->Instance->ARR;
+	resolution = SPEED_RESOLUTION(tar_speed, this_motor->speed_calc.psc);
+	
+	// 判断电机当前状态：停止、恒速、变速
+	if (tar_speed < 0.01f)	// 小于0.01rpm
+			this_motor->state = MOTOR_IDLE;
+	
+	else if (fabs(this_motor->current_speed - tar_speed) <= 0.54f && this_motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST)	// 若在高速微调状态（目标速度高于259rpm）当前速度与目标速度误差小于0.54rpm时认为进入匀速状态
 			this_motor->state = MOTOR_AVESPEED;
 
-    // 判断电机速度状态
-    if (tar_speed == 0 || this_motor->state == MOTOR_IDLE)
-        this_motor->motor_speed_state = MOTOR_STOP; // 停止状态
+	else if (fabs(this_motor->current_speed - tar_speed) >= 0.1f)	// 若在低速或高速状态（目标速度小于259rpm）当前速度与目标速度误差小于0.1rpm时认为进入匀速状态
+			this_motor->state = MOTOR_ACTIVE;
+	
+	else 
+		this_motor->state = MOTOR_AVESPEED;	
 
-    else if (0 < tar_speed && tar_speed < LOW_HIGH_SWITCH_SPEED)
-        this_motor->motor_speed_state = MOTOR_LOW_SPEED_STATE; // 低速状态
+	// 判断电机速度状态
+	if (tar_speed == 0 || this_motor->state == MOTOR_IDLE)
+			this_motor->motor_speed_state = MOTOR_STOP; // 停止状态
 
-    else if (LOW_HIGH_SWITCH_SPEED <= tar_speed && tar_speed < HIGH_ADJUST_SWITCH_SPEED)
-        this_motor->motor_speed_state = MOTOR_HIGH_SPEED_STATE; // 高速状态
+	else if (0 < tar_speed && tar_speed < LOW_HIGH_SWITCH_SPEED)
+			this_motor->motor_speed_state = MOTOR_LOW_SPEED_STATE; // 低速状态
 
-    else if (HIGH_ADJUST_SWITCH_SPEED <= tar_speed && tar_speed <= MOTOR_MAX_SPEED_RPM)
-        this_motor->motor_speed_state = MOTOR_HIGH_MINOR_ADJUST; // 高速微调状态
+	else if (LOW_HIGH_SWITCH_SPEED <= tar_speed && tar_speed < HIGH_ADJUST_SWITCH_SPEED)
+			this_motor->motor_speed_state = MOTOR_HIGH_SPEED_STATE; // 高速状态
+
+	else if (HIGH_ADJUST_SWITCH_SPEED <= tar_speed && tar_speed <= MOTOR_MAX_SPEED_RPM)
+			this_motor->motor_speed_state = MOTOR_HIGH_MINOR_ADJUST; // 高速微调状态
 }
-#define GET_LAST_COUNT 200 
-uint16_t test_arr[GET_LAST_COUNT] = {0};  // 存储结果的数组，初始化清零
 
-// 核心逻辑：获取toggle_pulse数组的后200位（有多少取多少）
-static void get_last_200_arr(Motor* motor, uint16_t* out_arr)
-{
-    if (motor == NULL || out_arr == NULL) {
-        memset(out_arr, 0, sizeof(uint16_t) * GET_LAST_COUNT);
-        return;  // 空指针保护
-    }
-
-    // 1. 获取数组有效长度（已计算的ARR元素个数）
-    uint32_t valid_len = motor->speed_calc.accel_pulse;
-    if (valid_len == 0) {
-        memset(out_arr, 0, sizeof(uint16_t) * GET_LAST_COUNT);
-        return;  // 无有效元素，返回全0
-    }
-
-    // 2. 计算实际要取的元素数量（最多200，最少为有效长度）
-    uint32_t take_count = (valid_len >= GET_LAST_COUNT) ? GET_LAST_COUNT : valid_len;
-    
-    // 3. 计算起始索引（避免负数，下标从0开始）
-    uint32_t start_idx = valid_len - take_count;
-    if (start_idx <= 0) start_idx = 0;  // 边界保护（防止valid_len<take_count时索引为负）
-
-    // 4. 复制后N位元素到out_arr（test_arr）
-    memset(out_arr, 0, sizeof(uint16_t) * GET_LAST_COUNT);  // 先清零结果数组
-    for (uint32_t i = 0; i < take_count; i++) {
-        // 源数组：toggle_pulse[start_idx + i]
-        // 目标数组：out_arr[i]
-        out_arr[i] = motor->speed_calc.toggle_pulse[start_idx + i];
-    }
-}
-// 电机速度设置
+/**
+  * @brief   电机速度设置核心函数（含状态切换、Jerk控制、高速微调）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
 static void motor_set_speed(motorindex_enum motor_index, uint16_t speed)
 {
-    if (motor_index >= MOTOR_COUNT)
-        return;
-    
-    Motor *motor = &Motor_list[motor_index]; // 获取当前电机对象
-    float target_rpm = _01RPM_TO_RPM(speed);
-    
-    if (motor->last_motor_speed_state != motor->motor_speed_state) // 如果电机速度状态发生变化
-        motor_tim_config_set(motor_index);
-        
-    motor->last_motor_speed_state = motor->motor_speed_state;
-    
-    if (motor->motor_speed_state == MOTOR_STOP)
-    {
-        motor_disable(motor_index); // 失能电机
-        motor->last_target_speed = 0;
-        return;
-    }
-    else 
-        motor_enable(motor_index); // 使能电机
+	if (motor_index >= MOTOR_COUNT)
+		return;
+	
+	Motor *motor = &Motor_list[motor_index]; // 获取当前电机对象
+	float target_rpm = _01RPM_TO_RPM(speed);
+	
+	if (motor->last_motor_speed_state != motor->motor_speed_state) // 如果电机速度状态发生变化
+		motor_tim_config_set(motor_index);
+			
+	motor->last_motor_speed_state = motor->motor_speed_state;
+	
+	if (motor->motor_speed_state == MOTOR_STOP)
+	{
+		motor_disable(motor_index); // 失能电机
+		motor->last_target_speed = 0;
+		return;
+	}
+	else 
+		motor_enable(motor_index); // 使能电机
 
-    if (motor->last_target_speed != target_rpm) // 如果电机目标速度发生变化
-    {
-			GET_TIME(t1);
-			motor_jerk_control(motor_index, motor->current_speed * 10.0f, speed, JERK); // 使用Jerk控制平滑加速       
-			motor->last_target_speed = target_rpm;
-			t3 = CALC_TIME(t1);
-    }
+	if (motor->last_target_speed != target_rpm) // 如果电机目标速度发生变化
+	{
+		motor_jerk_control(motor_index, motor->current_speed * 10.0f, speed, JERK); // 使用Jerk控制平滑加速       
+		motor->last_target_speed = target_rpm;
+	}
 
-    else if (motor->state == MOTOR_AVESPEED) // 如果电机进入匀速阶段
-    {
-        if (motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST && motor->last_state == MOTOR_ACTIVE) // 如果电机在高速微调状态中。从加速过程切换至匀速过程
-        {
-					GET_TIME(t1);
-          motor_high_speed_minor_adjust(motor_index, speed); // 使用高速微调算法
-					t4 = CALC_TIME(t1);
-        }
-    }
+	else if (motor->state == MOTOR_AVESPEED) // 如果电机进入匀速阶段
+	{
+		if (motor->motor_speed_state == MOTOR_HIGH_MINOR_ADJUST && motor->last_state == MOTOR_ACTIVE) // 如果电机在高速微调状态中。并且刚刚从加速过程切换至匀速过程
+		{
+			motor_high_speed_minor_adjust(motor_index, speed); // 使用高速微调算法，运行一次即可
+		}
+	}
 
-    motor->last_state = motor->state;
-	get_last_200_arr(motor, test_arr);
+	motor->last_state = motor->state;
 }
 
-// 获取电机当前速度
+/**
+  * @brief   获取电机当前实际速度
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  float: 当前速度（rpm单位）
+  */
 float motor_get_speed(motorindex_enum motor_index)
 {
-    return ARR_TO_RPM(Motor_list[motor_index].motor_params.timer->Instance->ARR, 
-                     Motor_list[motor_index].motor_params.timer->Instance->PSC);
-};
-
-// 电机初始化
-static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, uint32_t channel,
-                      GPIO_TypeDef* enable_port, uint32_t enable_pin)
-{
-    Motor_list[motor_index].motorindex = motor_index;
-    Motor_list[motor_index].state = MOTOR_IDLE;
-    Motor_list[motor_index].current_speed = 0;
-    memset(Motor_list[motor_index].speed_calc.toggle_pulse, 0, 
-           sizeof(Motor_list[motor_index].speed_calc.toggle_pulse));
-    Motor_list[motor_index].target_speed.target_speed = 0;
-    Motor_list[motor_index].motor_params.timer = timer;
-    Motor_list[motor_index].motor_params.channel = channel;
-    Motor_list[motor_index].motor_params.enable_port = enable_port;
-    Motor_list[motor_index].motor_params.enable_pin = enable_pin;
-    Motor_list[motor_index].last_target_speed = 0;
-    Motor_list[motor_index].last_motor_speed_state = MOTOR_STOP;
-    motor_tim_config_set(motor_index);
+	return ARR_TO_RPM(Motor_list[motor_index].motor_params.timer->Instance->ARR, Motor_list[motor_index].motor_params.timer->Instance->PSC);
 }
 
+/**
+  * @brief   单个电机初始化配置
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   timer: 定时器句柄指针
+  * @param   channel: 定时器通道号
+  * @param   enable_port: 使能引脚GPIO端口
+  * @param   enable_pin: 使能引脚GPIO引脚号
+  * @retval  void
+  */
+static void motor_init(motorindex_enum motor_index, TIM_HandleTypeDef* timer, uint32_t channel, GPIO_TypeDef* enable_port, uint32_t enable_pin)
+{
+	Motor_list[motor_index].motorindex = motor_index;
+	Motor_list[motor_index].state = MOTOR_IDLE;
+	Motor_list[motor_index].current_speed = 0;
+	memset(Motor_list[motor_index].speed_calc.toggle_pulse, 0, 
+				 sizeof(Motor_list[motor_index].speed_calc.toggle_pulse));
+	Motor_list[motor_index].target_speed.target_speed = 0;
+	Motor_list[motor_index].motor_params.timer = timer;
+	Motor_list[motor_index].motor_params.channel = channel;
+	Motor_list[motor_index].motor_params.enable_port = enable_port;
+	Motor_list[motor_index].motor_params.enable_pin = enable_pin;
+	Motor_list[motor_index].last_target_speed = 0;
+	Motor_list[motor_index].last_motor_speed_state = MOTOR_STOP;
+	motor_tim_config_set(motor_index);
+}
+
+/**
+  * @brief   全局临时变量：最小速度限制（脉冲/秒）
+  */
 float MIN_SPEED = 0;
-int num_3 = 0;
 
-// 电机Jerk控制：S曲线加减速，时间同步计算+更新ARR值
-static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, 
-                              uint16_t target_speed, float jerk)
+/**
+  * @brief   电机Jerk控制（S曲线加减速，时间同步计算+更新ARR值）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   start_speed: 起始速度（0.1rpm单位）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @param   jerk: 加加速度（Jerk）值
+  * @retval  void
+  */
+static void motor_jerk_control(motorindex_enum motor_index, uint16_t start_speed, uint16_t target_speed, float jerk)
 {
+	float start_rpm = _01RPM_TO_RPM(start_speed);
+	float target_rpm = _01RPM_TO_RPM(target_speed);	// 先将0.1rpm单位转为rpm单位
+	Motor* motor = &Motor_list[motor_index];
+	motor->target_speed.target_speed = target_speed;
+	uint32_t psc = motor->speed_calc.psc; // 获取当前电机的psc值
+
+	// 停止当前传输
+	motor_dma_stop(motor);
+
+	// 计算最小速度限制（脉冲/秒）
+	MIN_SPEED = MOTOR_SPEED_MIN(psc);
+
+	// 转换为脉冲频率（脉冲/秒）
+	float start_pulse = RPM_TO_PULSE(start_rpm);
+	float target_pulse = RPM_TO_PULSE(target_rpm);
+	float speed_error = target_pulse - start_pulse;
+
+	// 如果目标速度为0，则直接停止
+	if (target_rpm == 0.0f) 
+	{
+			motor_disable(motor_index); // 失能电机
+			return;
+	}
+
+	// 加速度方向判断：1:加速，-1:减速
+	int8_t accel_direction = (speed_error > 0) ? 1 : -1;
+	float JERK_effective = accel_direction * jerk;
+	motor->accel_decel = accel_direction;
+	// 计算加速/减速段的时间T和总时间
+	float T = SPEED_TO_TIME(speed_error); // 加速段时间
+	float total_time = 2 * T; // 总加速减速时间
+
+	// 计算加速段中间速度v_mid，确保不低于最小速度
+	float v_mid = start_pulse + JERK_effective * 0.5f * (T * T);
+	if (v_mid < MIN_SPEED)
+			v_mid = MIN_SPEED;
+
+	// 初始化变量
+	float current_speed = start_pulse; // 当前速度（脉冲/秒）
+	float sum_time = 0.0f; // 累计时间
+	uint16_t pulse_count = 0; // 脉冲计数
+	memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse));
+
+	// 如果当前速度低于最小速度，先加速到最小速度
+	if (current_speed < MIN_SPEED) 
+	{
+		float t_start = sqrt(2 * (MIN_SPEED - current_speed) / jerk);	// 第一步的时间
+		t_start = (t_start < 1e-6f) ? 1e-6f : t_start; // 防止时间为0
+
+		current_speed = MIN_SPEED;
+		uint16_t start_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 100, TIM_COUNT_MAX);
+		motor->speed_calc.toggle_pulse[pulse_count++] = start_arr;
+		sum_time = t_start;
+	}
+
+	// 循环计算S曲线每个点的ARR值
+	while (pulse_count < SPEED_MAX_PLUSE - 1 && sum_time < total_time) 
+	{
+		// 计算当前步长时间（1/当前速度）
+		float step_time = 1.0f / current_speed;
+		sum_time += step_time;
+
+		// 根据时间段计算当前速度
+		if (sum_time < T) 
+				// 加速段：v = v0 + 0.5 * J_eff * t^2
+				current_speed = start_pulse + JERK_effective * 0.5f * (sum_time * sum_time);
+		else 
+				// 减速段：v = -0.5*J_eff*t^2 + 2*J_eff*T*t - J_eff*T^2 + v0
+				current_speed = start_pulse - 0.5f * JERK_effective * sum_time * sum_time + 
+												2 * JERK_effective * T * sum_time - 
+												JERK_effective * T * T ;
+		// 限制速度
+		if (accel_direction == -1) 
+			current_speed = fmax(current_speed, target_pulse);
+		else 
+			current_speed = fmax(current_speed, MIN_SPEED);
+
+		// 计算当前ARR值并存储
+		uint16_t arr_value = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 100, TIM_COUNT_MAX);
+		motor->speed_calc.toggle_pulse[pulse_count++] = arr_value;
 		
-    num_3++;
-    float start_rpm = _01RPM_TO_RPM(start_speed);
-    float target_rpm = _01RPM_TO_RPM(target_speed);
-    Motor* motor = &Motor_list[motor_index];
-    motor->target_speed.target_speed = target_speed;
-    uint32_t psc = motor->speed_calc.psc; // 获取当前电机的psc值
+		// 如果速度接近目标（误差<0.1rpm）且已过加速段，则结束
+		float current_rpm = ARR_TO_RPM(arr_value, psc);
+		if (fabs(current_rpm - target_rpm) < 0.1f && sum_time >= T)
+		{
+				// 添加最后一个目标速度的ARR值
+				target_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 100, TIM_COUNT_MAX);
+				motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
+				break;
+		}
+	}
 	
-		// 停止当前传输
-    motor_dma_stop(motor);
+	if (sum_time >= 2.0f * T) 
+	{
+		// 添加最后一个目标速度的ARR值
+		target_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 100, TIM_COUNT_MAX);
+		motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
+	}
 	
-    // 计算最小速度限制（脉冲/秒）
-    MIN_SPEED = MOTOR_SPEED_MIN(psc);
-
-    // 转换为脉冲频率（脉冲/秒）
-    float start_pulse = RPM_TO_PULSE(start_rpm);
-    float target_pulse = RPM_TO_PULSE(target_rpm);
-    float speed_error = target_pulse - start_pulse;
-
-    // 如果目标速度为0，则直接停止
-    if (target_rpm == 0.0f) 
-    {
-        motor_disable(motor_index); // 失能电机
-        return;
-    }
-
-    // 加速度方向判断：1:加速，-1:减速
-    int8_t accel_direction = (speed_error > 0) ? 1 : -1;
-    float JERK_effective = accel_direction * jerk;
-		motor->accel_decel = accel_direction;
-    // 计算加速/减速段的时间T和总时间
-    float T = SPEED_TO_TIME(speed_error); // 加速段时间
-    float total_time = 2 * T; // 总加速减速时间
-
-    // 计算加速段中间速度v_mid，确保不低于最小速度
-    float v_mid = start_pulse + JERK_effective * 0.5f * (T * T);
-    if (v_mid < MIN_SPEED)
-        v_mid = MIN_SPEED;
-
-    // 初始化变量
-    float current_speed = start_pulse; // 当前速度（脉冲/秒）
-    float sum_time = 0.0f; // 累计时间
-    uint16_t pulse_count = 0; // 脉冲计数
-    memset(motor->speed_calc.toggle_pulse, 0, sizeof(motor->speed_calc.toggle_pulse));
-
-    // 如果当前速度低于最小速度，先加速到最小速度
-    if (current_speed < MIN_SPEED) 
-    {
-        float t_start = sqrt(2 * (MIN_SPEED - current_speed) / jerk);
-        t_start = (t_start < 1e-6f) ? 1e-6f : t_start; // 防止时间为0
-
-        current_speed = MIN_SPEED;
-        uint16_t start_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 100, TIM_COUNT_MAX);
-        motor->speed_calc.toggle_pulse[pulse_count++] = start_arr;
-        sum_time = t_start;
-    }
-
-    // 循环计算S曲线每个点的ARR值
-    while (pulse_count < SPEED_MAX_PLUSE - 1 && sum_time < total_time) 
-    {
-        // 计算当前步长时间（1/当前速度）
-        float step_time = 1.0f / current_speed;
-        sum_time += step_time;
-
-        // 根据时间段计算当前速度
-        if (sum_time < T) 
-            // 加速段：v = v0 + 0.5 * J_eff * t^2
-            current_speed = start_pulse + JERK_effective * 0.5f * (sum_time * sum_time);
-        else 
-            // 减速段：v = -0.5*J_eff*t^2 + 2*J_eff*T*t - J_eff*T^2 + v0
-            current_speed = start_pulse - 0.5f * JERK_effective * sum_time * sum_time + 
-                            2 * JERK_effective * T * sum_time - 
-                            JERK_effective * T * T ;
-				// 限制速度
-				if (accel_direction == -1) 
-					current_speed = fmax(current_speed, target_pulse);
-				else 
-					current_speed = fmax(current_speed, MIN_SPEED);
-
-        // 计算当前ARR值并存储
-        uint16_t arr_value = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(current_speed, psc), 100, TIM_COUNT_MAX);
-        motor->speed_calc.toggle_pulse[pulse_count++] = arr_value;
-				
-        // 如果速度接近目标（误差<0.1rpm）且已过加速段，则结束
-        float current_rpm = ARR_TO_RPM(arr_value, psc);
-        if (fabs(current_rpm - target_rpm) < 0.1f && sum_time >= T)
-        {
-            // 添加最后一个目标速度的ARR值
-            target_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 100, TIM_COUNT_MAX);
-            motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
-            break;
-        }
-    }
-    
-    if (sum_time >= 2.0f * T) 
-    {
-        // 添加最后一个目标速度的ARR值
-        target_arr = (uint16_t)IFR_CLAMP(PULSE_TO_ARR(target_pulse, psc), 100, TIM_COUNT_MAX);
-        motor->speed_calc.toggle_pulse[pulse_count++] = target_arr;
-    }
-    
-    // 更新电机状态并启动DMA
-    motor->sum_time_all = sum_time;
-    motor->speed_calc.accel_pulse = pulse_count;
-    motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, pulse_count, DMA_MODE_NORMAL);
-		GET_TIME(motor_time_start[motor_index]);
+	// 更新电机状态并启动DMA
+	motor->sum_time_all = sum_time;
+	motor->speed_calc.accel_pulse = pulse_count;
+	motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, pulse_count, DMA_MODE_NORMAL);
+	GET_TIME(motor_time_start[motor_index]);
 }
 
-int ARR_1 = 0;
+/**
+  * @brief   全局数组：存储高速微调后的各段速度值
+  */
 float high_speed_minor_adjust[SUBDIVIDE_RATIO] = {0};
+
+/**
+  * @brief   全局数组：存储高速微调后的实际ARR值
+  */
 int32_t actual_arr[SUBDIVIDE_RATIO] = {0};
 
-// 电机高速微调算法
+/**
+  * @brief   电机高速微调算法（细分周期补偿ARR浮点误差）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   target_speed: 目标速度（0.1rpm单位）
+  * @retval  void
+  */
 static void motor_high_speed_minor_adjust(motorindex_enum motor_index, uint16_t target_speed)
 {
     Motor* motor = &Motor_list[motor_index];
@@ -417,15 +557,18 @@ static void motor_high_speed_minor_adjust(motorindex_enum motor_index, uint16_t 
         actual_avg_rpm += ARR_TO_RPM(motor->speed_calc.toggle_pulse[i], psc) / SUBDIVIDE_RATIO;
     }
 
-    motor->current_speed = actual_avg_rpm;
+    motor->current_speed = actual_avg_rpm;	// 将平均速度设为当前速度
     motor->speed_calc.accel_pulse = SUBDIVIDE_RATIO;
-    ARR_1 = motor->motor_params.timer->Instance->ARR;
     
-    // 5. 启动循环DMA传输
+    // 5. 启动循环DMA传输，循环DMA发送只需要执行一次
     motor_dma_transmit(motor_index, motor->speed_calc.toggle_pulse, motor->speed_calc.accel_pulse, DMA_MODE_CIRCULAR);
 }
 
-// 电机定时器配置设置
+/**
+  * @brief   电机定时器参数配置设置（根据速度状态切换PSC）
+  * @param   motor_index: 电机索引（枚举类型）
+  * @retval  void
+  */
 static void motor_tim_config_set(motorindex_enum motor_index)
 {
     
@@ -472,9 +615,18 @@ static void motor_tim_config_set(motorindex_enum motor_index)
     __HAL_TIM_SET_COUNTER(htim, 0); // 计数器清零
 }
 
+/**
+  * @brief   全局临时变量：DMA传输计数统计
+  */
 int num_2 = 0;
-
-// DMA传输函数
+/**
+  * @brief   电机DMA传输配置与启动
+  * @param   motor_index: 电机索引（枚举类型）
+  * @param   arr_values: ARR值数组指针
+  * @param   arr_count: ARR值数组长度
+  * @param   mode: DMA传输模式（正常/循环）
+  * @retval  HAL_StatusTypeDef: HAL状态（HAL_OK/HAL_ERROR等）
+  */
 static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_t *arr_values, 
                                           uint32_t arr_count, dma_mode_enum mode)
 {
@@ -509,8 +661,6 @@ static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_
     HAL_DMA_RegisterCallback(hdma, HAL_DMA_XFER_ERROR_CB_ID, motor_dma_error_callback); // 注册DMA传输错误回调
     motor->motor_params.timer->Instance->CNT = 0; // 定时器计数器清零
     
-    
-    
     // 启用DMA和定时器
     __HAL_TIM_ENABLE_DMA(htim, TIM_DMA_UPDATE);
     HAL_TIM_Base_Start(htim);
@@ -529,9 +679,12 @@ static HAL_StatusTypeDef motor_dma_transmit(motorindex_enum motor_index, uint16_
     return HAL_OK;
 }
 
-int num_1 = 0;
 
-// 彻底停止DMA的函数（封装复用）
+/**
+  * @brief   彻底停止电机DMA传输（封装复用，含容错处理）
+  * @param   motor: 电机对象指针
+  * @retval  void
+  */
 static void motor_dma_stop(Motor* motor)
 {
     if (motor == NULL || motor->motor_params.timer == NULL) 
@@ -562,8 +715,16 @@ static void motor_dma_stop(Motor* motor)
     };
 
 }
+/**
+  * @brief   全局临时变量：DMA完成回调计数统计
+  */
+int num_1 = 0;
 
-// DMA传输完成回调函数
+/**
+  * @brief   DMA传输完成回调函数
+  * @param   hdma: DMA句柄指针
+  * @retval  void
+  */
 static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma)
 {
 	num_1++;
@@ -587,9 +748,16 @@ static void motor_dma_transfer_complete_callback(DMA_HandleTypeDef *hdma)
 	}
 }
 
+/**
+  * @brief   全局临时变量：DMA错误标志位
+  */
 int flag_error = 0;
 
-// DMA传输错误回调函数
+/**
+  * @brief   DMA传输错误回调函数
+  * @param   hdma: DMA句柄指针
+  * @retval  void
+  */
 static void motor_dma_error_callback(DMA_HandleTypeDef *hdma)
 {
     flag_error = 1;
